@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://inferencepath.dev/schemas/permeability-v1.json",
+  "title": "InferencePath Permeability Spec (v1)",
+  "description": "Per-Pathway, per-direction allowlist that defines what may cross the Membrane. The single source of truth for the egress boundary. Structural validation only; the denylist check on outbound fields is an additional semantic validation performed by the loader.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "pathways"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Permeability spec format version."
+    },
+    "pathways": {
+      "type": "object",
+      "description": "Map of Pathway ID to its per-direction allowlists.",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/directionSets" }
+    }
+  },
+  "$defs": {
+    "fieldName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Lower snake_case logical field name."
+    },
+    "fieldList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldName" },
+      "uniqueItems": true
+    },
+    "directionSets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outbound", "inbound"],
+      "properties": {
+        "outbound": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allow"],
+          "description": "Interior -> Exterior. STRICT. Must never list an identity or control field; the loader rejects denylisted entries. An empty allow list means nothing crosses (fail-closed).",
+          "properties": {
+            "allow": { "$ref": "#/$defs/fieldList" }
+          }
+        },
+        "inbound": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default"],
+          "description": "Exterior -> Interior. 'default' is provider-neutral; 'on_reveal' adds fields only when the Caller set the Reveal flag.",
+          "properties": {
+            "default": { "$ref": "#/$defs/fieldList" },
+            "on_reveal": { "$ref": "#/$defs/fieldList" }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "pathways": {
+        "chat": {
+          "outbound": {
+            "allow": ["messages", "temperature", "max_tokens", "top_p", "stop", "stream"]
+          },
+          "inbound": {
+            "default": ["message", "finish_reason", "usage"],
+            "on_reveal": ["provider", "model"]
+          }
+        }
+      }
+    }
+  ]
+}

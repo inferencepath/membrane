@@ -1,0 +1,49 @@
+# Membrane configuration (managed mode).
+#
+# This top-level file carries only BOOTSTRAP settings: server, console, audit,
+# and data_dir. All operational config — pathways (routing), credentials
+# (references), callers (hashed keys), and the permeability policy — lives in the
+# daemon's managed state store under data_dir and is edited via the Console or a
+# declarative bundle (`membrane config apply -f …`). Secrets are NEVER inline;
+# credentials are references (env:/file:/vault:) and Caller Keys are hashes only.
+server:
+  address: ":8080"
+  shutdown_timeout: "30s"
+
+# data_dir is the managed control-plane state directory (the embedded SQLite
+# store, the single source of truth for runtime config). Required. First run
+# creates an empty-but-valid store; the daemon stays fail-closed (not ready)
+# until configured — via the Console, `membrane config apply`, or seed-on-empty
+# (a bundle at --seed / $MEMBRANE_SEED / <data_dir>/seed.yaml). See
+# config/seed.example.yaml for a ready-to-apply starter bundle.
+data_dir: "/var/lib/membrane"
+
+# Audit: the Interior-only usage audit sink. Records carry no prompt/response
+# content, no secret, no Reveal flag, and no Exterior topology. Best-effort.
+#   sink: discard   -> auditing off (default).
+#   sink: jsonlines -> one JSON object per line to `path` (stdout|stderr|file 0600).
+audit:
+  sink: "discard"
+  # sink: "jsonlines"
+  # path: "stdout"
+
+# Membrane Console: a built-in operator UI on a SEPARATE admin listener, off the
+# egress path. It serves status/health/metrics, config views + editing (validate
+# → atomic write → hot reload), declarative Export / Apply, a Test Pathway
+# "try-it" against /v1/chat, and a Reload History view. It handles secrets by
+# reference only and never shows a secret value.
+#
+# Binding beyond loopback REQUIRES an admin token (by reference only). Inside a
+# container reachable via a published port, bind 0.0.0.0 and set the token.
+console:
+  enabled: true
+  address: "0.0.0.0:7474"
+  auth_token_ref: "env:MEMBRANE_CONSOLE_TOKEN"
+
+# Sealed secret store: the master key that unseals provider credentials entered
+# via the Console and referenced as `secret:<name>` from the credentials config.
+# Reference-only (env:/file:/vault:), NEVER inline. The key lives outside the
+# embedded database, so a stolen membrane.db alone cannot reveal any secret. When
+# unset, the sealed store is disabled and any `secret:` reference fails closed.
+secrets:
+  master_key_ref: "env:MEMBRANE_SECRET_KEY"

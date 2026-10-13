@@ -1,0 +1,126 @@
+# Membrane — declarative config bundle (seed example).
+#
+# This is the managed-mode replacement for the old standalone sample files
+# (pathways/credentials/callers/permeability). It is ONE canonical document
+# holding every editable kind, applied either:
+#   - automatically on first run (seed-on-empty) when mounted/pointed at the
+#     daemon: --seed <path>, $MEMBRANE_SEED, or <data_dir>/seed.yaml; or
+#   - explicitly via the CLI:  membrane config apply -f config/seed.example.yaml
+#   - or from the Console:     Export / Apply → load file → Apply.
+#
+# Secrets are NEVER inline. Credentials are references only (env:/file:/vault:)
+# and Caller Keys are stored as SHA-256 hashes only. The demo caller key is:
+#   ck_demo.s3cr3t-demo-key      (rotate/replace before any real deployment)
+version: 1
+
+# Providers own everything needed to reach a vendor: the family, how it
+# authenticates (auth_mode), connection facts (endpoint/deployment/region), the
+# admin-controlled allowed `models` with a `default_model`, and — for api_key
+# auth — a reference to the sealed key (never a value: env:/file:/vault:/secret:).
+#
+# auth_mode is one of:
+#   api_key                - static sealed key (requires secret_ref)
+#   aws_default_chain      - ambient AWS IAM (role/instance/IRSA); no secret
+#   aws_assume_role        - AssumeRole(role_arn[, external_id]); no secret
+#   azure_managed_identity - Entra managed identity bearer token; no secret
+# To restrict which models a pathway may use, create a narrower provider (e.g.
+# openai-reason with a smaller `models` list) and attach that one.
+providers:
+  - name: openai-main
+    family: openai
+    auth_mode: api_key
+    models: ["gpt-4o-mini", "gpt-4o"]
+    default_model: "gpt-4o-mini"
+    endpoint: "https://api.openai.com/v1"
+    secret_ref: "env:OPENAI_API_KEY"
+  - name: anthropic-main
+    family: anthropic
+    models: ["claude-3-5-sonnet"]
+    default_model: "claude-3-5-sonnet"
+    endpoint: "https://api.anthropic.com"
+    secret_ref: "env:ANTHROPIC_API_KEY"
+  # Example IAM-based Bedrock provider (no stored key — uses the host's role).
+  # Chat uses the model-agnostic Converse API, so any Converse-capable model
+  # (Anthropic, Llama, Mistral, Titan, Nova, Cohere, …) works — only the model id
+  # changes. Cross-region inference-profile ids (us./eu./apac./global. prefixes)
+  # are supported; a geographic prefix must match the configured region (global.
+  # is unrestricted), and the region is validated at config load.
+  # - name: bedrock-main
+  #   family: bedrock
+  #   auth_mode: aws_default_chain
+  #   models:
+  #     - "anthropic.claude-3-5-sonnet-20240620-v1:0"       # foundation model
+  #     - "us.anthropic.claude-3-5-sonnet-20241022-v2:0"    # cross-region profile
+  #   default_model: "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+  #   region: "us-east-1"
+  # Example Google Gemini provider — AI Studio (static API key).
+  # - name: gemini-main
+  #   family: gemini
+  #   auth_mode: api_key
+  #   models: ["gemini-1.5-pro", "gemini-1.5-flash"]
+  #   default_model: "gemini-1.5-flash"
+  #   secret_ref: "env:GEMINI_API_KEY"
+  # Example Gemini on Vertex AI (no stored key — ambient GCP credentials / ADC).
+  # project + location scope the Vertex endpoint; a short-lived OAuth bearer is
+  # minted per request and auto-refreshes (the GCP analog of Bedrock's ambient
+  # modes). An embeddings model can serve an `embeddings` Pathway (embedContent).
+  # - name: gemini-vertex
+  #   family: gemini
+  #   auth_mode: gcp_application_default
+  #   project: "my-gcp-project"
+  #   location: "us-central1"
+  #   models: ["gemini-1.5-pro", "text-embedding-004"]
+  #   default_model: "gemini-1.5-pro"
+
+# Routing: each Pathway attaches a SET of configured providers (one default) by
+# name. All connection config and the allowed-model list live on the provider.
+# When cascade_allowed is true, a caller app may supply its own ordered
+# provider/model cascade (`targets`) at request time, restricted to this
+# pathway's providers and each provider's allowed models; otherwise the default
+# provider's default model is used.
+pathways:
+  - pathway: chat
+    cascade_allowed: true
+    default_provider: openai-main
+    providers: [openai-main, anthropic-main]
+
+# Named credential REFERENCES (optional, advanced). Providers above already own
+# their routing credential; this section is for low-level raw references only.
+credentials: []
+
+# Caller Key store: identity + hashed secret + a deny-by-default allowlist. A
+# Caller is permitted a Pathway only if it is listed in `allow`.
+callers:
+  - key_id: ck_demo
+    caller_id: acme-app
+    name: Acme Demo App
+    hash: 458d6534a760ed4c8c2f1c8f86a517572cb56fa6a0f8554efdda2cb8532a4816
+    allow: [chat]
+
+# Permeability: per-direction logical field allowlists — the Membrane's source
+# of truth. Outbound rebuilds requests from `allow` ONLY; identity/control
+# fields are rejected (fail-closed). Provider/model are revealed inbound only
+# when the Interior-only Reveal flag is set.
+permeability:
+  chat:
+    outbound:
+      allow: [messages, temperature, max_tokens, top_p, stop, stream]
+    inbound:
+      default: [message, finish_reason, usage]
+      on_reveal: [provider, model]
+    # Tool calling is OFF by default: add `tools` and `tool_choice` to
+    # `outbound.allow` to opt a Pathway in. An optional per-Pathway `tool_policy`
+    # governs it org-wide (all enforced on the Interior, before egress):
+    #
+    #   tool_policy:
+    #     tools_allow: [get_weather, search_tickets]  # named-tool allowlist
+    #     tools_deny:  [shell_exec]                    # always-rejected names
+    #     max_tools: 32                                # cap tool defs per request
+    #     max_tool_result_bytes: 32768                 # cap each tool-role result
+    #     redact: ['(?i)ssn:\s*\d{3}-\d{2}-\d{4}']     # redact result content
+    #     destinations: [internal-llm]                 # providers tools may reach
+    #
+    # Membrane never executes tools — it relays definitions outward and
+    # calls/results inward; the Caller (agent) executes. Tool-usage counts
+    # (offered/returned/turns) appear in the audit record; names, arguments, and
+    # results never do.

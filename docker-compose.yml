@@ -1,0 +1,51 @@
+# Membrane — single-service, self-hosted deployment. No external database and no
+# cloud dependency: the control-plane state lives in an embedded store on a named
+# volume, and the operator UI (Membrane Console) is compiled into the binary.
+#
+#   docker compose up -d          # start (builds the image on first run)
+#   # Console:  http://127.0.0.1:7474   (token = $MEMBRANE_CONSOLE_TOKEN)
+#   # Egress:   http://127.0.0.1:8080/v1/chat
+#
+# First run creates an empty, fail-closed store. Configure it one of three ways:
+#   1. Console  → Export / Apply, or the structured editors.
+#   2. CLI      → docker compose exec membrane membrane config apply -f - < bundle.yaml
+#   3. Seed     → uncomment BOTH MEMBRANE_SEED and the seed mount below
+#                 (applied once, when empty).
+#
+# Secrets are passed by REFERENCE only (env:/file:/vault: in the config/bundle);
+# the values below are the environment those references resolve against. Set them
+# in a .env file or your shell — never commit real secrets.
+services:
+  membrane:
+    image: inferencepath/membrane:${MEMBRANE_TAG:-dev}
+    build:
+      context: .
+      args:
+        VERSION: ${MEMBRANE_TAG:-0.0.0-dev}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # data-plane egress API (/v1/chat)
+      - "7474:7474"   # Membrane Console admin UI (token-protected)
+    environment:
+      # Egress Provider credential(s) that config references (e.g. env:OPENAI_API_KEY).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Admin token for the Console (required because it binds 0.0.0.0 here).
+      MEMBRANE_CONSOLE_TOKEN: ${MEMBRANE_CONSOLE_TOKEN:-}
+      # Master key for the sealed provider-key store (Providers screen).
+      MEMBRANE_SECRET_KEY: ${MEMBRANE_SECRET_KEY:-}
+      # Optional: apply config/seed.example.yaml on first run (see seed mount
+      # below). Uncomment this with the seed mount to enable seeding.
+      # MEMBRANE_SEED: /var/lib/membrane/seed.yaml
+    volumes:
+      # Persistent managed state (the embedded store). The daemon runs as the
+      # non-root user that owns this path in the image.
+      - membrane-data:/var/lib/membrane
+      # Bootstrap config (read-only).
+      - ./config/membrane.yaml:/etc/inferencepath/membrane.yaml:ro
+      # Optional: seed the store once, on first (empty) run. Uncomment with
+      # MEMBRANE_SEED above to enable.
+      # - ./config/seed.example.yaml:/var/lib/membrane/seed.yaml:ro
+
+volumes:
+  membrane-data:

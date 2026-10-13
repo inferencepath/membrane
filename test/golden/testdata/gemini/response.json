@@ -1,0 +1,15 @@
+{
+  "PathwayID": "",
+  "Message": {
+    "role": "assistant",
+    "content": "hello from golden"
+  },
+  "FinishReason": "stop",
+  "Usage": {
+    "prompt_tokens": 3,
+    "completion_tokens": 5,
+    "total_tokens": 8
+  },
+  "Provider": "gemini",
+  "Model": "golden-model"
+}

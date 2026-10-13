@@ -1,0 +1,15 @@
+{
+  "PathwayID": "",
+  "Message": {
+    "role": "assistant",
+    "content": "hello from golden"
+  },
+  "FinishReason": "end_turn",
+  "Usage": {
+    "prompt_tokens": 3,
+    "completion_tokens": 5,
+    "total_tokens": 8
+  },
+  "Provider": "bedrock",
+  "Model": "golden-model"
+}

@@ -1,0 +1,1802 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Membrane Console</title>
+  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="32.5 27.5 104 104"><defs><mask id="behind" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200"><rect width="200" height="200" fill="%23fff"/><rect x="46" y="60" width="60" height="60" fill="%23000"/></mask></defs><g mask="url(%23behind)"><rect x="61.5" y="33.5" width="71" height="71" rx="5.5" fill="%23D92F02"/><rect x="72.5" y="44.5" width="49" height="49" rx="3" fill="%232CA58D"/><polyline points="76,49.5 116.5,49.5 116.5,90" fill="none" stroke="%231C7F6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0.01 6 7 6"/></g><polyline points="46,116 46,60 106,60 106,120 76,120 76,93" fill="none" stroke="%23D92F02" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="46" cy="116" r="9.5" fill="%23D92F02"/><circle cx="76" cy="93" r="10" fill="%23D92F02"/></svg>' />
+  <style>
+    :root {
+      /* InferencePath brand: warm off-white surfaces, dark teal ink, and an
+         orange-red accent (matches inferencepath.io). */
+      --bg: #faf7f2; --panel: #ffffff; --border: #e8e1d6; --fg: #16302c;
+      --muted: #6f7a73; --ok: #2f9e44; --bad: #e5484d;
+      --accent: #e0512f; --accent-hover: #c9431f; --accent-weak: #fbeae3;
+      --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 14px/1.5 var(--font-sans);
+    }
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: -.01em; }
+    header .ver { color: var(--muted); font-size: 12px; }
+    /* Membrane icon shown in the top header. */
+    .brand-logo { width: 26px; height: 26px; flex: 0 0 26px; display: block; }
+    main { display: flex; max-width: 1100px; margin: 0 auto; }
+    nav {
+      width: 220px; padding: 20px 12px; border-right: 1px solid var(--border); min-height: 80vh;
+    }
+    nav a {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 12px; color: var(--muted); text-decoration: none;
+      border-radius: 6px; cursor: pointer;
+      font-size: 13px;
+    }
+    nav a:hover { background: var(--accent-weak); color: var(--fg); }
+    nav a.active { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+    .nav-ico {
+      width: 15px; height: 15px; flex: 0 0 15px;
+      stroke: currentColor; fill: none; stroke-width: 1.8;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .nav-group {
+      margin: 14px 0 6px; padding: 0 12px;
+      color: #7f8a82; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    section { flex: 1; padding: 24px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(22, 48, 44, .04); }
+    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .card .value { font-size: 22px; margin-top: 6px; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill.ok { background: rgba(63,185,80,.15); color: var(--ok); }
+    .pill.bad { background: rgba(248,81,73,.15); color: var(--bad); }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    .empty { color: var(--muted); padding: 16px 0; }
+    h2 { font-size: 15px; margin: 0 0 16px; }
+    .muted { color: var(--muted); }
+    code, pre { font-family: var(--font-mono); }
+    input, select, textarea {
+      background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px;
+    }
+    button {
+      background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    /* Primary actions use the brand accent. */
+    button.primary, #login-btn, [data-act^="save-"], #edit-apply, [data-act="run-test"] {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    button.primary:hover, #login-btn:hover, [data-act^="save-"]:hover,
+    #edit-apply:hover, [data-act="run-test"]:hover {
+      background: var(--accent-hover); border-color: var(--accent-hover); color: #fff;
+    }
+    .login-overlay {
+      position: fixed; inset: 0; background: rgba(1, 4, 9, .72);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    /* The author display:flex above would otherwise override the UA [hidden]
+       rule, leaving the overlay permanently visible. Restore hide behavior. */
+    .login-overlay[hidden] { display: none; }
+    .login-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 28px; width: 380px; max-width: 90vw;
+      box-shadow: 0 10px 40px rgba(22, 48, 44, .25);
+    }
+    .login-card h2 { margin: 0 0 6px; }
+    .login-card input { width: 100%; margin: 14px 0 8px; }
+    .login-card button { width: 100%; margin-top: 8px; }
+    .login-err { color: var(--bad); min-height: 18px; font-size: 13px; }
+    header .link {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font: inherit; font-size: 12px; padding: 2px 6px;
+    }
+    header .link:hover { color: var(--accent); }
+    .wiz-shell { max-width: 860px; }
+    .wiz-step { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .wiz-step h3 { margin: 0 0 8px; font-size: 20px; }
+    .wiz-grid {
+      display: grid; grid-template-columns: 160px minmax(0, 1fr);
+      gap: 10px 14px; align-items: start; max-width: 760px;
+    }
+    .wiz-lbl {
+      color: var(--muted); font-size: 12px; text-transform: uppercase;
+      letter-spacing: .04em; padding-top: 8px;
+    }
+    .wiz-input { width: 100%; max-width: 380px; }
+    .wiz-inline-check { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; }
+    .wiz-providers {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+    }
+    .wiz-provider-tools {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;
+    }
+    .wiz-provider-tools input { width: 260px; }
+    .wiz-provider-list {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px 12px; max-height: 180px; overflow: auto;
+    }
+    .wiz-provider-list label { display: inline-flex; gap: 6px; align-items: center; min-width: 0; }
+    .wiz-provider-empty { color: var(--muted); font-style: italic; padding: 4px 0; }
+    .wiz-provider-count { color: var(--muted); font-size: 12px; }
+    .wiz-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .wiz-hint { margin: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="32.5 27.5 104 104" aria-hidden="true">
+      <defs>
+        <mask id="behind" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+          <rect width="200" height="200" fill="#fff"></rect>
+          <rect x="46" y="60" width="60" height="60" fill="#000"></rect>
+        </mask>
+      </defs>
+      <g mask="url(#behind)">
+        <rect x="61.5" y="33.5" width="71" height="71" rx="5.5" fill="#D92F02"></rect>
+        <rect x="72.5" y="44.5" width="49" height="49" rx="3" fill="#2CA58D"></rect>
+        <polyline points="76,49.5 116.5,49.5 116.5,90" fill="none" stroke="#1C7F6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0.01 6 7 6"></polyline>
+      </g>
+      <polyline points="46,116 46,60 106,60 106,120 76,120 76,93" fill="none" stroke="#D92F02" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <circle cx="46" cy="116" r="9.5" fill="#D92F02"></circle>
+      <circle cx="76" cy="93" r="10" fill="#D92F02"></circle>
+    </svg>
+    <h1>Membrane Console</h1>
+    <span id="ver" class="ver"></span>
+    <span id="egress" style="margin-left:auto"></span>
+    <button id="signout" class="link" hidden style="margin-left:12px">Sign out</button>
+  </header>
+
+  <div id="login" class="login-overlay" hidden>
+    <div class="login-card">
+      <h2>Sign in</h2>
+      <p class="muted">Enter the admin token to access the Membrane Console. The
+        token is configured by the operator via <code>console.auth_token_ref</code>.</p>
+      <input id="login-token" type="password" placeholder="Admin token" autocomplete="current-password" />
+      <div id="login-err" class="login-err"></div>
+      <button id="login-btn">Sign in</button>
+    </div>
+  </div>
+  <main>
+    <nav>
+      <a data-view="dashboard" class="active">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zM13 21h8v-8h-8zM13 3h8v6h-8zM3 21h8v-6H3z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a data-view="health">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+        <span>Health &amp; Targets</span>
+      </a>
+      <a data-view="metrics">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20v-12"/></svg>
+        <span>Metrics</span>
+      </a>
+      <div class="nav-group">Configuration</div>
+      <a data-view="providers">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+        <span>Providers</span>
+      </a>
+      <a data-view="pathways">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18M6 12h12M9 17h6"/></svg>
+        <span>Pathways</span>
+      </a>
+      <a data-view="callers">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Callers</span>
+      </a>
+      <a data-view="permeability">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h6m6 0h6M9 8l-4 4 4 4M15 8l4 4-4 4"/></svg>
+        <span>Permeability</span>
+      </a>
+      <div class="nav-group">Advanced</div>
+      <a data-view="edit">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        <span>Edit Config</span>
+      </a>
+      <a data-view="declare">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <span>Export / Apply</span>
+      </a>
+      <a data-view="secrets">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5v3H5v12h14V10h-2V7a5 5 0 0 0-5-5zm3 8H9V7a3 3 0 0 1 6 0z"/></svg>
+        <span>Secrets</span>
+      </a>
+      <div class="nav-group">Operations</div>
+      <a data-view="test">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6M10 3v5l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17l-5-9V3"/></svg>
+        <span>Test Pathway</span>
+      </a>
+      <a data-view="reloads">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 22v-6h6"/><path d="M20 13a8 8 0 0 0-14.5-3M4 11a8 8 0 0 0 14.5 3"/></svg>
+        <span>Reload History</span>
+      </a>
+      <a data-view="audit">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Audit</span>
+      </a>
+      <a data-view="settings">
+        <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+    <section id="view"></section>
+  </main>
+
+  <script>
+    // --- admin auth (login over the existing token mechanism) ----------------
+    // The UI shell is public; the control API under /api/console/ requires the
+    // admin token (unless the request is loopback). We keep the token in session
+    // storage and attach it to API calls; a 401 opens the login screen. Loopback
+    // access needs no token, so this stays invisible for local use.
+    const TOKEN_KEY = 'membraneConsoleToken';
+    let consoleToken = sessionStorage.getItem(TOKEN_KEY) || '';
+    const rawFetch = window.fetch.bind(window);
+
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const isApi = url.indexOf('/api/console/') === 0;
+      let opts = init || {};
+      if (isApi && consoleToken) {
+        opts = Object.assign({}, opts);
+        const headers = new Headers(opts.headers || {});
+        headers.set('X-Console-Token', consoleToken);
+        opts.headers = headers;
+      }
+      const res = await rawFetch(input, opts);
+      if (isApi && res.status === 401) showLogin();
+      return res;
+    };
+
+    function showLogin() {
+      const box = document.getElementById('login');
+      if (!box.hidden) return;
+      box.hidden = false;
+      const inp = document.getElementById('login-token');
+      inp.value = '';
+      document.getElementById('login-err').textContent = '';
+      inp.focus();
+    }
+    function hideLogin() { document.getElementById('login').hidden = true; }
+
+    // submitLogin verifies the entered token with a direct (unwrapped) request so
+    // a bad token shows an inline error instead of re-opening the dialog.
+    async function submitLogin() {
+      const token = document.getElementById('login-token').value.trim();
+      const err = document.getElementById('login-err');
+      if (!token) { err.textContent = 'Enter a token.'; return; }
+      const res = await rawFetch('/api/console/status', { headers: { 'X-Console-Token': token } });
+      if (!res.ok) { err.textContent = 'Invalid token — check console.auth_token_ref.'; return; }
+      consoleToken = token;
+      sessionStorage.setItem(TOKEN_KEY, token);
+      hideLogin();
+      await renderHeader();
+      show(currentView);
+    }
+
+    function signOut() {
+      consoleToken = '';
+      sessionStorage.removeItem(TOKEN_KEY);
+      showLogin();
+    }
+
+    const api = (p) => fetch(p).then((r) => r.json());
+    const el = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.firstElementChild; };
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const attr = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const csvToList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+    // loadVersion fetches a config file's current content-version token. It
+    // returns null when editing is unavailable (static mode → 503), which the
+    // screens use to hide their Edit controls.
+    async function loadVersion(kind) {
+      const res = await fetch('/api/console/edit/' + kind);
+      if (!res.ok) return null;
+      const f = await res.json();
+      return f.version || '';
+    }
+
+    // saveForm renders a structured form server-side (node merge preserving
+    // comments + untouched/secret fields), validates, writes atomically, and
+    // reloads. Returns the ApplyResult.
+    async function saveForm(kind, form, version) {
+      const res = await fetch('/api/console/edit/' + kind + '/form/apply',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ form, version }) });
+      return res.json().catch(() => ({ rejected: true, reason: 'apply failed (' + res.status + ')' }));
+    }
+
+    function formResult(box, r) {
+      if (r.applied) box.innerHTML = '<span class="pill ok">applied</span> <span class="muted">changes written and reloaded</span>';
+      else if (r.unchanged) box.innerHTML = '<span class="pill ok">no change</span> <span class="muted">' + esc(r.reason || '') + '</span>';
+      else box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(r.reason || 'unknown error') + '</span>';
+    }
+
+    function isPlaceholderVersion(v) {
+      const s = String(v || '').trim().toLowerCase();
+      return s === '' || s === '0.0.0-dev' || s === 'dev' || s === 'unknown';
+    }
+
+    function isPlaceholderCommit(v) {
+      const s = String(v || '').trim().toLowerCase();
+      return s === '' || s === 'none' || s === 'unknown';
+    }
+
+    function isPlaceholderBuildTime(v) {
+      const s = String(v || '').trim().toLowerCase();
+      return s === '' || s === 'unknown';
+    }
+
+    function displayVersionMeta(ver) {
+      const version = String((ver && ver.version) || '').trim();
+      const commit = String((ver && ver.commit) || '').trim();
+      const buildTime = String((ver && ver.buildTime) || '').trim();
+      return {
+        version,
+        commit,
+        buildTime,
+        showVersion: !isPlaceholderVersion(version),
+        showCommit: !isPlaceholderCommit(commit),
+        showBuildTime: !isPlaceholderBuildTime(buildTime),
+      };
+    }
+
+    async function renderHeader() {
+      try {
+        const s = await api('/api/console/status');
+        const meta = displayVersionMeta(s.version || {});
+        const parts = [];
+        if (meta.showVersion) parts.push('v' + meta.version);
+        if (meta.showCommit) parts.push('(' + meta.commit + ')');
+        document.getElementById('ver').textContent = parts.join(' ');
+        document.getElementById('egress').innerHTML = s.egressEnabled
+          ? '<span class="pill ok">egress enabled</span>'
+          : '<span class="pill bad">egress disabled</span>';
+        // Offer sign-out only when a token is actually in use.
+        document.getElementById('signout').hidden = !consoleToken;
+        return s;
+      } catch (e) { return null; }
+    }
+
+    async function dashboard() {
+      const s = await api('/api/console/status');
+      const meta = displayVersionMeta(s.version || {});
+      const ready = s.ready
+        ? '<span class="pill ok">ready</span>'
+        : '<span class="pill bad">not ready</span>';
+      const versionCard = meta.showVersion
+        ? `<div class="card"><div class="label">Version</div><div class="value">${esc(meta.version)}</div></div>`
+        : '';
+      const buildInfo = (meta.showBuildTime || meta.showCommit)
+        ? `<p class="muted" style="margin-top:24px">` +
+          `${meta.showBuildTime ? ('Build: ' + esc(meta.buildTime)) : ''}` +
+          `${meta.showBuildTime && meta.showCommit ? ' · ' : ''}` +
+          `${meta.showCommit ? ('commit ' + esc(meta.commit)) : ''}` +
+          `</p>`
+        : '';
+      return `
+        <h2>Dashboard</h2>
+        <div class="cards">
+          <div class="card"><div class="label">Liveness</div><div class="value"><span class="pill ok">up</span></div></div>
+          <div class="card"><div class="label">Readiness</div><div class="value">${ready}</div></div>
+          <div class="card"><div class="label">Egress path</div><div class="value">${s.egressEnabled ? 'enabled' : 'disabled'}</div></div>
+          ${versionCard}
+        </div>
+        ${s.reason ? `<p class="muted" style="margin-top:16px">Reason: ${esc(s.reason)}</p>` : ''}
+        ${buildInfo}
+      `;
+    }
+
+    async function health() {
+      const h = await api('/api/console/health');
+      const targets = (h.targets || []).map((t) => `
+        <tr><td>${esc(t.pathway)}</td><td>${esc(t.provider)}</td>
+        <td>${t.healthy ? '<span class="pill ok">healthy</span>' : '<span class="pill bad">unhealthy</span>'}</td></tr>`).join('');
+      const fo = (h.failovers || []).map((f) => `
+        <tr><td>${esc(f.pathway)}</td><td>${esc(f.provider)}</td><td>${f.count}</td></tr>`).join('');
+      return `
+        <h2>Health &amp; Targets</h2>
+        <table><thead><tr><th>Pathway</th><th>Provider family</th><th>Health</th></tr></thead>
+          <tbody>${targets || '<tr><td colspan="3" class="empty">No target health reported yet.</td></tr>'}</tbody></table>
+        <h2 style="margin-top:28px">Failovers</h2>
+        <table><thead><tr><th>Pathway</th><th>Provider family</th><th>Count</th></tr></thead>
+          <tbody>${fo || '<tr><td colspan="3" class="empty">No failovers recorded.</td></tr>'}</tbody></table>
+      `;
+    }
+
+    async function metrics() {
+      const m = await api('/api/console/metrics');
+      const reqs = (m.requests || []).map((x) => `
+        <tr><td>${esc(x.pathway)}</td><td>${x.stream}</td><td>${esc(x.outcome)}</td><td>${x.count}</td></tr>`).join('');
+      const toks = (m.tokens || []).map((x) => `
+        <tr><td>${esc(x.pathway)}</td><td>${x.prompt}</td><td>${x.completion}</td><td>${x.total}</td></tr>`).join('');
+      const az = (m.authz || []).map((x) => `
+        <tr><td>${esc(x.pathway)}</td><td>${esc(x.decision)}</td><td>${x.count}</td></tr>`).join('');
+      return `
+        <h2>Requests</h2>
+        <table><thead><tr><th>Pathway</th><th>Stream</th><th>Outcome</th><th>Count</th></tr></thead>
+          <tbody>${reqs || '<tr><td colspan="4" class="empty">No requests served yet.</td></tr>'}</tbody></table>
+        <h2 style="margin-top:28px">Tokens</h2>
+        <table><thead><tr><th>Pathway</th><th>Prompt</th><th>Completion</th><th>Total</th></tr></thead>
+          <tbody>${toks || '<tr><td colspan="4" class="empty">No token usage recorded.</td></tr>'}</tbody></table>
+        <h2 style="margin-top:28px">Authorization</h2>
+        <table><thead><tr><th>Pathway</th><th>Decision</th><th>Count</th></tr></thead>
+          <tbody>${az || '<tr><td colspan="3" class="empty">No authorization decisions recorded.</td></tr>'}</tbody></table>
+      `;
+    }
+
+    async function pathways() {
+      const v = await api('/api/console/config/pathways');
+      // A pathway cannot serve without a matching Permeability policy (linked by
+      // name). Flag any that are missing one so the gap is visible here.
+      const perm = await api('/api/console/config/permeability').catch(() => ({ pathways: [] }));
+      const covered = new Set((perm.pathways || []).map((d) => d.pathway));
+      const rows = (v.pathways || []).map((c) => {
+        const provs = (c.providers || []);
+        const def = c.defaultProvider || (provs[0] || '-');
+        const list = provs.map((p) => p === def ? `<strong>${esc(p)}</strong>` : esc(p)).join(', ') || '-';
+        const permCell = covered.has(c.pathway)
+          ? '<span class="pill ok">set</span>'
+          : '<span class="pill bad">missing</span>';
+        return `<tr><td>${esc(c.pathway)}</td><td><code>${list}</code></td><td>${c.cascadeAllowed ? 'yes' : 'no'}</td><td>${permCell}</td></tr>`;
+      }).join('');
+      return `
+        <h2>Pathways
+          <button data-act="edit-pathways" style="float:right">Edit</button>
+          <button data-act="add-pathway" style="float:right;margin-right:8px">+ New pathway</button></h2>
+        <table><thead><tr><th>Pathway</th><th>Providers (default bold)</th><th>Cascade allowed</th><th>Permeability</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="empty">No pathways configured.</td></tr>'}</tbody></table>`;
+    }
+
+    // Secrets: the sealed secret store. Operators enter a provider key once here;
+    // it is encrypted at rest and referenced from a credential as `secret:<name>`.
+    // Values are WRITE-ONLY — the API never returns one, so this screen shows only
+    // metadata (name, version, when, whether a credential references it).
+    async function secrets() {
+      const res = await fetch('/api/console/secrets');
+      if (res.status === 503) {
+        return `
+          <h2>Secrets</h2>
+          <p class="muted">Secrets are unavailable. Configure <code>secrets.master_key_ref</code> and restart.</p>`;
+      }
+      const v = await res.json().catch(() => ({ secrets: [] }));
+      const rows = (v.secrets || []).map((s) => `
+        <tr>
+          <td><code>secret:${esc(s.name)}</code></td>
+          <td>v${s.version || 1}</td>
+          <td>${esc(s.updatedAt || '-')}</td>
+          <td>${s.referenced ? '<span class="pill ok">in use</span>' : '<span class="muted">unused</span>'}</td>
+          <td style="white-space:nowrap">
+            <button data-act="rotate-secret" data-name="${attr(s.name)}">Rotate</button>
+            <button data-act="del-secret" data-name="${attr(s.name)}" ${s.referenced ? 'disabled title="remove the credential reference first"' : ''}>✕</button>
+          </td>
+        </tr>`).join('');
+      return `
+        <h2>Secrets</h2>
+        <p class="muted">Manage sealed provider secrets. New secrets are created from the <strong>Providers</strong> screen.</p>
+        <div class="card" style="margin-bottom:16px;border-left:3px solid var(--ok, #2e8b57);background:rgba(46,139,87,.06)">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex:0 0 auto;margin-top:2px"><path d="M12 2a5 5 0 0 0-5 5v3H5v12h14V10h-2V7a5 5 0 0 0-5-5zm3 8H9V7a3 3 0 0 1 6 0z"/></svg>
+            <div>
+              <strong>Your keys stay in your vault.</strong>
+              <p class="muted" style="margin:4px 0 0">Encrypted at rest, stored locally, never displayed.</p>
+            </div>
+          </div>
+        </div>
+        <table><thead><tr><th>Reference</th><th>Version</th><th>Updated</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" class="empty">No secrets stored yet.</td></tr>'}</tbody></table>
+        <div class="card" id="sec-rotate-card" style="margin-top:16px;display:none">
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;max-width:720px">
+            <label>Rotate</label><code>secret:<span id="sec-rotate-name"></span></code>
+            <label>New value</label><input id="sec-rotate-value" type="password" placeholder="paste the new secret value" autocomplete="new-password">
+          </div>
+          <div style="margin-top:12px"><button class="primary" data-act="save-secret-rotate">Save rotation</button></div>
+        </div>
+        <div id="sec-msg" style="margin-top:12px"></div>`;
+    }
+
+    async function saveSecret(name, value) {
+      const box = document.getElementById('sec-msg');
+      if (!name || !value) { if (box) box.innerHTML = '<span class="pill bad">error</span> <span class="muted">name and value are required</span>'; return; }
+      const res = await fetch('/api/console/secrets/' + encodeURIComponent(name),
+        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok && b.applied) { show('secrets'); return; }
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.error || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    async function deleteSecret(name) {
+      const res = await fetch('/api/console/secrets/' + encodeURIComponent(name), { method: 'DELETE' });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok) { show('secrets'); return; }
+      const box = document.getElementById('sec-msg');
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.error || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    function callerRowsHtml(list) {
+      return (list || []).map((c) => `
+        <tr><td>${esc(c.keyId)}</td><td>${esc(c.callerId)}</td><td>${esc(c.name || '-')}</td>
+        <td>${(c.allow && c.allow.length) ? c.allow.map(esc).join(', ') : '<span class="pill bad">deny-all</span>'}</td>
+        <td style="white-space:nowrap"><button data-act="del-caller" data-keyid="${attr(c.keyId)}">✕</button></td></tr>`).join('');
+    }
+
+    let callerPathwaysCache = [];
+    let callerDraft = null;
+    let lastCreatedCallerKey = '';
+
+    function callerSlug(s) {
+      const base = String(s || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+      return base || 'app';
+    }
+
+    function callerRand(n) {
+      const abc = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      let out = '';
+      try {
+        const buf = new Uint8Array(n);
+        crypto.getRandomValues(buf);
+        for (let i = 0; i < buf.length; i++) out += abc[buf[i] % abc.length];
+        return out;
+      } catch (_) {
+        for (let i = 0; i < n; i++) out += abc[Math.floor(Math.random() * abc.length)];
+        return out;
+      }
+    }
+
+    function newCallerDraft(name) {
+      const stem = callerSlug(name || callerPathwaysCache[0] || 'app');
+      return {
+        keyId: 'ck_' + stem + '_' + callerRand(6),
+        callerId: stem + '-app',
+        secret: callerRand(24) + callerRand(24),
+      };
+    }
+
+    function renderCallerDraft() {
+      const k = document.getElementById('cal-gen-keyid');
+      const c = document.getElementById('cal-gen-callerid');
+      const s = document.getElementById('cal-gen-secret');
+      if (k) k.textContent = callerDraft ? callerDraft.keyId : '-';
+      if (c) c.textContent = callerDraft ? callerDraft.callerId : '-';
+      if (s) s.textContent = callerDraft ? callerDraft.secret : '-';
+    }
+
+    function regenerateCallerDraft() {
+      const name = (document.getElementById('cal-name') || {}).value || '';
+      callerDraft = newCallerDraft(name);
+      renderCallerDraft();
+    }
+
+    async function copyText(value) {
+      const txt = String(value || '');
+      if (!txt) return false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(txt);
+          return true;
+        }
+      } catch (_) {}
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return !!ok;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function reloadCallersTable() {
+      const v = await api('/api/console/config/callers');
+      const tb = document.getElementById('callers-tbody');
+      if (tb) tb.innerHTML = callerRowsHtml(v.callers) || '<tr><td colspan="5" class="empty">No callers configured.</td></tr>';
+    }
+
+    async function callers() {
+      const v = await api('/api/console/config/callers');
+      const caps = await api('/api/console/config/pathways').catch(() => ({ pathways: [] }));
+      callerPathwaysCache = (caps.pathways || []).map((c) => c.pathway).filter(Boolean);
+      const capChecks = callerPathwaysCache.length
+        ? callerPathwaysCache.map((p, i) => `
+            <label style="display:inline-flex;gap:4px;align-items:center;margin-right:12px">
+              <input type="checkbox" class="cal-allow-cap" value="${attr(p)}"${i === 0 ? ' checked' : ''}>${esc(p)}
+            </label>`).join('')
+        : '<span class="muted">(no pathways yet — add a pathway first)</span>';
+      return `
+        <h2>Callers <span class="muted">(ids &amp; allowlists — secrets are hashed, never stored)</span>
+          <button data-act="edit-callers" style="float:right">Edit allowlists</button></h2>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin:0 0 8px">Add caller</h3>
+          <p class="muted" style="margin:0 0 10px">Key ID, Caller ID, and Secret are auto-generated. Copy the full key after creation — it is shown once.</p>
+          <div style="display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;max-width:760px">
+            <label>Name (optional)</label><input id="cal-name" placeholder="e.g. Acme Production" autocomplete="off">
+            <label>Allowed pathways</label><div>${capChecks}</div>
+            <label>Generated Key ID</label><code id="cal-gen-keyid">-</code>
+            <label>Generated Caller ID</label><code id="cal-gen-callerid">-</code>
+            <label>Generated Secret</label><code id="cal-gen-secret">-</code>
+          </div>
+          <div style="margin-top:12px">
+            <button data-act="regen-caller">Regenerate</button>
+            <button class="primary" data-act="add-caller">Add caller</button>
+          </div>
+        </div>
+        <table><thead><tr><th>Key ID</th><th>Caller ID</th><th>Name</th><th>Allow (deny-by-default)</th><th></th></tr></thead>
+          <tbody id="callers-tbody">${callerRowsHtml(v.callers) || '<tr><td colspan="5" class="empty">No callers configured.</td></tr>'}</tbody></table>
+        <div id="caller-msg" style="margin-top:12px"></div>`;
+    }
+
+    async function saveCaller() {
+      const box = document.getElementById('caller-msg');
+      const fail = (m) => { if (box) box.innerHTML = '<span class="pill bad">error</span> <span class="muted">' + esc(m) + '</span>'; };
+      if (!callerDraft || !callerDraft.keyId || !callerDraft.callerId || !callerDraft.secret) regenerateCallerDraft();
+      const name = (document.getElementById('cal-name').value || '').trim();
+      const allow = [...document.querySelectorAll('.cal-allow-cap:checked')].map((c) => c.value.trim()).filter(Boolean);
+      if (!allow.length) return fail('select at least one allowed pathway');
+      const keyId = callerDraft.keyId;
+      const callerId = callerDraft.callerId;
+      const secret = callerDraft.secret;
+      const res = await fetch('/api/console/callers',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyId, callerId, name, allow, secret }) });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok && (b.applied || b.unchanged)) {
+        await reloadCallersTable();
+        const n = document.getElementById('cal-name'); if (n) n.value = '';
+        callerDraft = newCallerDraft('');
+        renderCallerDraft();
+        lastCreatedCallerKey = keyId + '.' + secret;
+        if (box) {
+          box.innerHTML =
+            '<span class="pill ok">created</span> ' +
+            '<span class="muted">Copy and save this key somewhere secure now — it will not be shown again.</span>' +
+            '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<code id="caller-once-key">' + esc(lastCreatedCallerKey) + '</code>' +
+            '<button data-act="copy-last-caller-key" title="Copy full key" aria-label="Copy full key">📋 Copy</button>' +
+            '</div>';
+        }
+        return;
+      }
+      fail(b.reason || ('failed (' + res.status + ')'));
+    }
+
+    async function deleteCaller(keyId) {
+      const res = await fetch('/api/console/callers/' + encodeURIComponent(keyId), { method: 'DELETE' });
+      const b = await res.json().catch(() => ({}));
+      const box = document.getElementById('caller-msg');
+      if (res.ok) { await reloadCallersTable(); if (box) box.innerHTML = '<span class="pill ok">deleted</span> <span class="muted">' + esc(keyId) + '</span>'; return; }
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.error || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    async function permeability() {
+      const v = await api('/api/console/config/permeability');
+      const rows = (v.pathways || []).map((d) => `
+        <tr><td>${esc(d.pathway)}</td><td>${(d.outboundAllow || []).map(esc).join(', ')}</td>
+        <td>${(d.inboundDefault || []).map(esc).join(', ')}</td>
+        <td>${(d.inboundOnReveal || []).map(esc).join(', ') || '-'}</td></tr>`).join('');
+      return `
+        <h2>Permeability <span class="muted">(v${v.version || '?'} — the Membrane's source of truth)</span>
+          <button data-act="edit-permeability" style="float:right">Edit</button></h2>
+        <table><thead><tr><th>Pathway</th><th>Outbound allow</th><th>Inbound default</th><th>Inbound on-reveal</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="empty">No permeability spec loaded.</td></tr>'}</tbody></table>
+        ${denylistPanel(v.outboundDenylist)}`;
+    }
+
+    // denylistPanel renders the read-only, Membrane-wide outbound denylist: the
+    // hard-coded identity/control fields that can NEVER be allowlisted outbound.
+    // It is informational only — there is no edit path (the floor is immutable).
+    function denylistPanel(fields) {
+      if (!fields || !fields.length) return '';
+      const pills = fields.map((f) => `<code>${esc(f)}</code>`).join(' &nbsp; ');
+      return `
+        <div class="card" style="margin-top:16px">
+          <h3 style="margin:0 0 6px">Outbound denylist <span class="muted">(global, read-only)</span></h3>
+          <p class="muted" style="margin:0 0 8px">These identity/control fields can never be added to any pathway's outbound allowlist — attempting to do so is rejected on save. Enforced Membrane-wide and not editable.</p>
+          <div>${pills}</div>
+        </div>`;
+    }
+
+    function confirmDelete(entity, label) {
+      const what = String(entity || 'item');
+      const who = String(label || '').trim();
+      const suffix = who ? (' "' + who + '"') : '';
+      return window.confirm('Delete ' + what + suffix + '?\nThis action cannot be undone.');
+    }
+
+    async function settings() {
+      const s = await api('/api/console/config/server');
+      const row = (k, val) => `<tr><td class="muted">${esc(k)}</td><td>${esc(val)}</td></tr>`;
+      return `
+        <h2>Settings</h2>
+        <table><tbody>
+          ${s.mode ? row('Config mode', s.mode === 'managed' ? 'Managed (embedded state store)' : s.mode) : ''}
+          ${s.mode ? row('Data directory', s.dataDir || '-') : ''}
+          ${row('Editing', s.editingEnabled ? 'enabled (live, hot-reloaded)' : 'read-only')}
+          ${row('Server address', s.address)}
+          ${row('Shutdown timeout', s.shutdownTimeout)}
+          ${row('Audit sink', s.auditSink)}
+          ${row('Audit path', s.auditPath || '-')}
+          ${row('Console enabled', String(s.consoleEnabled))}
+          ${row('Console address', s.consoleAddress)}
+          ${row('Console auth token', s.consoleAuth ? 'configured' : 'none (localhost-only)')}
+        </tbody></table>`;
+    }
+
+    // Edit Config: load a file's raw YAML, validate it (parse-only dry run), and
+    // apply it (optimistic-concurrency version check + atomic write + reload).
+    // Secrets stay by-reference: the operator edits the same reference-only YAML.
+    const EDIT_KINDS = ['pathways', 'callers', 'permeability'];
+    let editState = { kind: 'pathways', version: '' };
+
+    async function edit() {
+      const options = EDIT_KINDS.map((k) =>
+        `<option value="${k}"${k === editState.kind ? ' selected' : ''}>${esc(k)}</option>`).join('');
+      return `
+        <h2>Edit Config <span class="muted">(validate → atomic write → hot reload)</span></h2>
+        <p class="muted">Edits are validated, written atomically to the managed state store, and hot-reloaded.
+          Secrets remain by reference (env:/file:/vault:) — never inline.</p>
+        <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
+          <select id="edit-kind">${options}</select>
+          <button id="edit-load">Load</button>
+          <button id="edit-validate">Validate</button>
+          <button id="edit-apply">Apply &amp; reload</button>
+        </div>
+        <textarea id="edit-raw" spellcheck="false"
+          style="width:100%;height:360px;background:var(--bg);color:var(--fg);border:1px solid var(--border);
+          border-radius:6px;padding:12px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"></textarea>
+        <div id="edit-msg" style="margin-top:12px"></div>`;
+    }
+
+    function editMsg(kind, text) {
+      const cls = kind === 'ok' ? 'ok' : 'bad';
+      document.getElementById('edit-msg').innerHTML =
+        `<span class="pill ${cls}">${kind === 'ok' ? 'ok' : 'error'}</span> <span class="muted">${esc(text)}</span>`;
+    }
+
+    async function editLoad() {
+      editState.kind = document.getElementById('edit-kind').value;
+      const res = await fetch('/api/console/edit/' + editState.kind);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        editMsg('bad', b.error || ('load failed (' + res.status + ')'));
+        document.getElementById('edit-raw').value = '';
+        return;
+      }
+      const f = await res.json();
+      document.getElementById('edit-raw').value = f.raw || '';
+      editState.version = f.version || '';
+      editMsg('ok', 'loaded ' + editState.kind + ' (version ' + editState.version.slice(0, 12) + '…)');
+    }
+
+    async function editValidate() {
+      const raw = document.getElementById('edit-raw').value;
+      const res = await fetch('/api/console/edit/' + editState.kind + '/validate',
+        { method: 'POST', body: raw });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok && b.valid) editMsg('ok', 'valid');
+      else editMsg('bad', b.error || b.valid === false ? b.error : ('validate failed (' + res.status + ')'));
+    }
+
+    async function editApply() {
+      const raw = document.getElementById('edit-raw').value;
+      const res = await fetch('/api/console/edit/' + editState.kind + '/apply',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw, version: editState.version }) });
+      const b = await res.json().catch(() => ({}));
+      if (b.version) editState.version = b.version;
+      if (b.applied) editMsg('ok', 'applied and reloaded');
+      else if (b.unchanged) editMsg('ok', 'no changes to apply');
+      else editMsg('bad', b.reason || ('apply failed (' + res.status + ')'));
+    }
+
+    // --- structured editors (C4) ---------------------------------------------
+    // Each editor renders a form from the current read view, posts a structured
+    // form to the server (which merges it into the YAML, preserving comments and
+    // secret/untouched fields), then reloads the read view on success.
+
+    const unavailable = (section) => {
+      section.insertAdjacentHTML('beforeend',
+        '<p class="muted" style="margin-top:12px">Editing is unavailable: the daemon is running in read-only (file) mode. Switch to managed mode (set data_dir) to edit from the console.</p>');
+    };
+
+    async function editCallers() {
+      const section = document.getElementById('view');
+      const version = await loadVersion('callers');
+      if (version === null) return unavailable(section);
+      const v = await api('/api/console/config/callers');
+      const rows = (v.callers || []).map((c) => `
+        <tr><td>${esc(c.keyId)}</td><td>${esc(c.callerId)}</td>
+        <td><input data-keyid="${attr(c.keyId)}" value="${attr((c.allow || []).join(', '))}" style="width:100%"></td></tr>`).join('');
+      section.innerHTML = `
+        <h2>Edit Caller allowlists <span class="muted">(deny-by-default; comma-separated pathways)</span></h2>
+        <p class="muted">Only allowlists are editable here; key hashes and ids are preserved untouched.</p>
+        <table><thead><tr><th>Key ID</th><th>Caller ID</th><th>Allow</th></tr></thead><tbody>${rows}</tbody></table>
+        <div style="margin-top:16px"><button data-act="save-callers" data-version="${attr(version)}">Save &amp; reload</button>
+          <button data-act="cancel-callers">Cancel</button></div>
+        <div id="form-msg" style="margin-top:12px"></div>`;
+    }
+
+    async function saveCallers(version) {
+      const callers = [...document.querySelectorAll('input[data-keyid]')].map((inp) =>
+        ({ keyId: inp.dataset.keyid, allow: csvToList(inp.value) }));
+      const r = await saveForm('callers', { callers }, version);
+      formResult(document.getElementById('form-msg'), r);
+    }
+
+    // Suggested starting field lists for a brand-new permeability row. These are
+    // only a convenience the operator reviews before saving — nothing crosses the
+    // Membrane until this is explicitly saved.
+    const PERM_SUGGESTED = {
+      out: 'messages, temperature, max_tokens, top_p, stop, stream',
+      def: 'message, finish_reason, usage',
+      rev: 'provider, model',
+    };
+
+    function permRow(d, isNew) {
+      return `
+        <tr class="perm-row${isNew ? ' perm-new' : ''}" data-cap="${attr(d.pathway)}"${isNew ? ' style="background:rgba(255,180,0,0.08)"' : ''}>
+          <td>${esc(d.pathway)}${isNew ? ' <span class="pill bad">new</span>' : ''}</td>
+          <td><input class="perm-out" value="${attr((d.outboundAllow || []).join(', '))}" style="width:100%"></td>
+          <td><input class="perm-def" value="${attr((d.inboundDefault || []).join(', '))}" style="width:100%"></td>
+          <td><input class="perm-rev" value="${attr((d.inboundOnReveal || []).join(', '))}" style="width:100%"></td></tr>`;
+    }
+
+    async function editPermeability() {
+      const section = document.getElementById('view');
+      const version = await loadVersion('permeability');
+      if (version === null) return unavailable(section);
+      const v = await api('/api/console/config/permeability');
+      // Permeability is per-pathway and linked to the Pathways document by name.
+      // Surface every pathway that still lacks a policy as a pre-filled, editable
+      // row so a new pathway can be wired up here instead of hitting a dead end.
+      const caps = await api('/api/console/config/pathways').catch(() => ({ pathways: [] }));
+      const covered = new Set((v.pathways || []).map((d) => d.pathway));
+      const missing = (caps.pathways || [])
+        .map((c) => c.pathway)
+        .filter((name) => name && !covered.has(name));
+      const existingRows = (v.pathways || []).map((d) => permRow(d, false)).join('');
+      const stubRows = missing.map((name) => permRow({
+        pathway: name,
+        outboundAllow: PERM_SUGGESTED.out.split(', '),
+        inboundDefault: PERM_SUGGESTED.def.split(', '),
+        inboundOnReveal: PERM_SUGGESTED.rev.split(', '),
+      }, true)).join('');
+      const hint = missing.length
+        ? `<p class="muted">${missing.length} pathway(s) have no permeability policy yet — pre-filled below as <span class="pill bad">new</span>. Review the allowed fields and Save to activate them.</p>`
+        : '';
+      section.innerHTML = `
+        <h2>Edit Permeability <span class="muted">(comma-separated logical fields)</span></h2>
+        <p class="muted">Outbound rejects identity/control fields (fail-closed) on save. One policy per pathway, linked by name.</p>
+        ${hint}
+        <table><thead><tr><th>Pathway</th><th>Outbound allow</th><th>Inbound default</th><th>Inbound on-reveal</th></tr></thead>
+          <tbody>${existingRows}${stubRows}</tbody></table>
+        ${denylistPanel(v.outboundDenylist)}
+        <div style="margin-top:16px"><button data-act="save-permeability" data-version="${attr(version)}">Save &amp; reload</button>
+          <button data-act="cancel-permeability">Cancel</button></div>
+        <div id="form-msg" style="margin-top:12px"></div>`;
+    }
+
+    async function savePermeability(version) {
+      const pathways = [...document.querySelectorAll('.perm-row')].map((row) => ({
+        pathway: row.dataset.cap,
+        outboundAllow: csvToList(row.querySelector('.perm-out').value),
+        inboundDefault: csvToList(row.querySelector('.perm-def').value),
+        inboundOnReveal: csvToList(row.querySelector('.perm-rev').value),
+      }));
+      const r = await saveForm('permeability', { pathways }, version);
+      formResult(document.getElementById('form-msg'), r);
+    }
+
+    async function editPathways() {
+      const section = document.getElementById('view');
+      const version = await loadVersion('pathways');
+      if (version === null) return unavailable(section);
+      await loadProviderNames();
+      const v = await api('/api/console/config/pathways');
+      const hasAny = (v.pathways || []).length > 0;
+      section.innerHTML = `
+        <h2>Edit Pathways</h2>
+        <p class="muted">A pathway attaches one or more configured providers (one is the default). All connection details and the allowed-model list live on the provider. Enable <em>cascade allowed</em> to let caller apps supply their own ordered provider/model fallback at request time. Add providers first.</p>
+        ${hasAny ? '' : '<p class="muted">No pathways yet. Add one to start routing.</p>'}
+        <div style="margin:8px 0 12px"><button data-act="add-pathway">+ Add pathway</button></div>
+        <div id="caps">${(v.pathways || []).map(capBlock).join('')}</div>
+        <div style="margin-top:16px"><button data-act="save-pathways" data-version="${attr(version)}">Save &amp; reload</button>
+          <button data-act="cancel-pathways">Cancel</button></div>
+        <div id="form-msg" style="margin-top:12px"></div>`;
+    }
+
+    // A pathway attaches a SET of configured providers (one default) and a
+    // cascade_allowed flag. Callers may only reference these providers (and each
+    // provider's allowed models) when supplying their own cascade.
+    function capBlock(c) {
+      c = c || {};
+      const selected = (c.providers || []);
+      const def = c.defaultProvider || selected[0] || '';
+      const names = [...providerNamesCache];
+      selected.forEach((n) => { if (!names.includes(n)) names.push(n); });
+      const checks = names.length
+        ? names.map((n) => `
+            <label style="display:inline-flex;gap:4px;align-items:center;margin-right:12px">
+              <input type="checkbox" class="cap-prov" value="${attr(n)}"${selected.includes(n) ? ' checked' : ''}>${esc(n)}
+            </label>`).join('')
+        : '<span class="muted">(add a provider first)</span>';
+      const defOptions = names.length
+        ? names.map((n) => `<option value="${attr(n)}"${n === def ? ' selected' : ''}>${esc(n)}</option>`).join('')
+        : '<option value="">(none)</option>';
+      return `
+        <div class="cap-block card" style="margin-bottom:12px">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <input class="cap-name" value="${attr(c.pathway || '')}" placeholder="pathway (e.g. chat)" style="max-width:220px">
+            <label style="display:inline-flex;gap:4px;align-items:center">
+              <input type="checkbox" class="cap-cascade"${c.cascadeAllowed ? ' checked' : ''}> cascade allowed
+            </label>
+            <button data-act="del-pathway" style="margin-left:auto">✕</button>
+          </div>
+          <div style="margin-top:8px"><label class="muted">Providers</label><br>${checks}</div>
+          <div style="margin-top:8px"><label>Default provider</label>
+            <select class="cap-default">${defOptions}</select></div>
+        </div>`;
+    }
+
+    // PROVIDERS mirrors the Exterior family registry (factory.Families). `local`
+    // is the custom / OpenAI-compatible family: point it at ANY OpenAI-compatible
+    // endpoint (self-hosted vLLM/Ollama, OpenRouter, Together, Groq, …).
+    const PROVIDERS = [
+      { v: 'openai', label: 'OpenAI' },
+      { v: 'anthropic', label: 'Anthropic' },
+      { v: 'azure-openai', label: 'Azure OpenAI' },
+      { v: 'bedrock', label: 'AWS Bedrock' },
+      { v: 'local', label: 'Custom (OpenAI-compatible)' },
+    ];
+    let providerNamesCache = [];
+
+    async function loadProviderNames() {
+      const res = await fetch('/api/console/providers');
+      if (!res.ok) { providerNamesCache = []; return; }
+      const v = await res.json().catch(() => ({ providers: [] }));
+      providerNamesCache = [...new Set((v.providers || []).map((p) => (p.name || '').trim()).filter(Boolean))].sort();
+    }
+
+    // operationsCache holds the per-operation catalog (route + Permeability field
+    // palette) from GET /api/console/operations; operationsByName indexes it so the
+    // pathway wizard can filter the suggested allowlist fields to the chosen
+    // operation's vocabulary. Falls back gracefully to just 'chat' if unavailable.
+    let operationsCache = [];
+    let operationsByName = {};
+
+    async function loadOperations() {
+      try {
+        const res = await fetch('/api/console/operations');
+        if (!res.ok) { operationsCache = []; operationsByName = {}; return; }
+        const v = await res.json().catch(() => ({ operations: [] }));
+        operationsCache = (v.operations || []).filter((o) => o && o.operation);
+      } catch (_e) {
+        operationsCache = [];
+      }
+      operationsByName = {};
+      for (const o of operationsCache) operationsByName[o.operation] = o;
+    }
+
+    // operationPalette returns the suggested permeability field CSVs for an
+    // operation. For `chat` (unrestricted vocabulary) it keeps the generic chat
+    // defaults; for a restricted operation it derives outbound from the operation's
+    // outboundAllow, puts provider/model under on-reveal, and the remaining inbound
+    // fields under inbound default.
+    function operationPalette(opName) {
+      const o = operationsByName[opName];
+      if (!o || !o.restricted) return { out: PERM_SUGGESTED.out, def: PERM_SUGGESTED.def, rev: PERM_SUGGESTED.rev };
+      const revealFields = ['provider', 'model'];
+      const inbound = o.inboundFields || [];
+      const rev = inbound.filter((f) => revealFields.indexOf(f) >= 0);
+      const def = inbound.filter((f) => revealFields.indexOf(f) < 0);
+      return {
+        out: (o.outboundAllow || []).join(', '),
+        def: def.join(', '),
+        rev: rev.join(', '),
+      };
+    }
+
+    // Providers: primary setup surface.
+    async function providers() {
+      const res = await fetch('/api/console/providers');
+      if (res.status === 503) {
+        return `
+          <h2>Providers</h2>
+          <p class="muted">Providers are unavailable. Configure <code>secrets.master_key_ref</code> and restart.</p>`;
+      }
+      const v = await res.json().catch(() => ({ providers: [] }));
+      const rows = (v.providers || []).map((p) => {
+        const used = (p.usedBy || []);
+        const where = p.endpoint ? `<code>${esc(p.endpoint)}</code>` : (p.region ? esc(p.region) : '<span class="muted">—</span>');
+        const auth = p.authMode || 'api_key';
+        const models = (p.models || []);
+        const modelCell = `${esc(p.defaultModel || '')}${models.length > 1 ? ` <span class="muted">(+${models.length - 1})</span>` : ''}`;
+        const keyCell = authStoresSecret(auth)
+          ? (p.sealed ? '<span class="pill ok">key set</span>' : '<span class="pill bad">no key</span>')
+          : `<span class="pill ok">${esc(AUTH_LABELS[auth] || auth)}</span>`;
+        const canRotate = authStoresSecret(auth);
+        return `
+        <tr>
+          <td><strong>${esc(p.name)}</strong></td>
+          <td>${esc(p.family || '')}</td>
+          <td>${modelCell}</td>
+          <td>${where}</td>
+          <td>${keyCell}</td>
+          <td>${used.length ? used.map((u) => `<code>${esc(u)}</code>`).join(' ') : '<span class="muted">unused</span>'}</td>
+          <td style="white-space:nowrap">
+            ${canRotate ? `<button data-act="rotate-provider" data-name="${attr(p.name)}" data-family="${attr(p.family || '')}" data-auth="${attr(auth)}" data-models="${attr(models.join('\n'))}" data-default="${attr(p.defaultModel || '')}" data-endpoint="${attr(p.endpoint || '')}" data-deployment="${attr(p.deployment || '')}" data-region="${attr(p.region || '')}">Rotate key</button>` : ''}
+            <button data-act="del-provider" data-name="${attr(p.name)}" ${used.length ? 'disabled title="detach from the pathway(s) first"' : ''}>✕</button>
+          </td>
+        </tr>`;
+      }).join('');
+      return `
+        <h2>Providers</h2>
+        <p class="muted">Add a provider key, then use it from <a href="#" data-view="pathways">Pathways</a>.</p>
+        <div class="card" style="margin-bottom:16px;border-left:3px solid var(--ok, #2e8b57);background:rgba(46,139,87,.06)">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex:0 0 auto;margin-top:2px"><path d="M12 2a5 5 0 0 0-5 5v3H5v12h14V10h-2V7a5 5 0 0 0-5-5zm3 8H9V7a3 3 0 0 1 6 0z"/></svg>
+            <div>
+              <strong>Your keys stay in your vault.</strong>
+              <p class="muted" style="margin:4px 0 0">Encrypted at rest, stored locally, never displayed.</p>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:grid;grid-template-columns:160px 1fr;gap:10px;align-items:center;max-width:720px">
+            <label>Provider</label>
+            <select id="prov-kind">
+              ${PROVIDERS.map((p) => `<option value="${p.v}">${esc(p.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div id="prov-fields" style="margin-top:10px"></div>
+          <p class="muted" style="margin:10px 0 0;font-size:.9em">Reference: <code id="prov-preview">secret:openai-main</code></p>
+          <div style="margin-top:12px"><button class="primary" data-act="save-provider">Add provider</button></div>
+        </div>
+        <table><thead><tr><th>Provider</th><th>Family</th><th>Default model</th><th>Endpoint / Region</th><th>Auth</th><th>Used by</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="7" class="empty">No providers yet. Add one above.</td></tr>'}</tbody></table>
+        <div id="prov-msg" style="margin-top:12px"></div>`;
+    }
+
+    // Per-family defaults: allowed models to prefill, the endpoint hint, and the
+    // auth modes the family supports. local = custom OpenAI-compatible endpoint.
+    const FAMILY_DEFAULTS = {
+      'openai': { models: ['gpt-4o', 'gpt-4o-mini'], endpoint: 'https://api.openai.com/v1', auth: ['api_key'] },
+      'anthropic': { models: ['claude-3-5-sonnet-latest'], endpoint: 'https://api.anthropic.com', auth: ['api_key'] },
+      'azure-openai': { models: ['gpt-4o'], endpoint: '', auth: ['api_key', 'azure_managed_identity'] },
+      'bedrock': { models: ['anthropic.claude-3-5-sonnet-20240620-v1:0'], endpoint: '', auth: ['api_key', 'aws_bearer_token_bedrock', 'aws_default_chain', 'aws_assume_role'] },
+      'local': { models: [], endpoint: '', auth: ['api_key'] },
+    };
+    const AUTH_LABELS = {
+      api_key: 'API key', aws_default_chain: 'AWS IAM role (ambient)',
+      aws_assume_role: 'AWS IAM assume-role', azure_managed_identity: 'Azure managed identity',
+      aws_bearer_token_bedrock: 'AWS Bedrock bearer token',
+    };
+    function authStoresSecret(auth) {
+      return auth === 'api_key' || auth === 'aws_bearer_token_bedrock';
+    }
+    function famDef(kind) { return FAMILY_DEFAULTS[kind] || FAMILY_DEFAULTS['openai']; }
+
+    function defaultProviderName(kind) {
+      return kind === 'local' ? '' : (kind + '-main');
+    }
+
+    function providerNameFromForm() {
+      const kind = (document.getElementById('prov-kind') || {}).value || 'openai';
+      const typed = ((document.getElementById('prov-name') || {}).value || '').trim();
+      return typed || defaultProviderName(kind);
+    }
+
+    function currentAuthMode(kind) {
+      const sel = document.getElementById('prov-auth');
+      if (sel && sel.value) return sel.value;
+      return famDef(kind).auth[0];
+    }
+
+    function inp(id, val, ph, type) {
+      return `<input id="${id}" value="${attr(val || '')}" placeholder="${ph || ''}"${type ? (' type="' + type + '"') : ''} autocomplete="off">`;
+    }
+
+    // fieldHTML renders only the inputs the chosen family + auth mode need
+    // (prefilled), so the operator types the minimum. Admin owns the allowed
+    // model list; a developer can only ever use a model from it.
+    function fieldHTML(kind, d, authMode, nameVal) {
+      const g = [];
+      const row = (label, html) => { g.push(`<label>${esc(label)}</label>${html}`); };
+      row('Name', inp('prov-name', nameVal || '', kind === 'local' ? 'e.g. my-gateway-main' : ('e.g. ' + defaultProviderName(kind))));
+      if (d.auth.length > 1) {
+        row('Authentication', `<select id="prov-auth">${d.auth.map((a) => `<option value="${a}"${a === authMode ? ' selected' : ''}>${esc(AUTH_LABELS[a] || a)}</option>`).join('')}</select>`);
+      }
+      row('Allowed models', `<textarea id="prov-models" rows="3" placeholder="one model id per line" style="width:100%">${esc((d.models || []).join('\n'))}</textarea>`);
+      row('Default model', inp('prov-default', (d.models || [])[0] || '', 'used when the caller names no model'));
+      if (kind === 'azure-openai') {
+        row('Endpoint (resource URL)', inp('prov-endpoint', '', 'https://<resource>.openai.azure.com'));
+        row('Deployment', inp('prov-deployment', '', 'your-deployment'));
+      } else if (kind === 'bedrock') {
+        row('Region', inp('prov-region', '', 'us-east-1'));
+      } else {
+        row('Endpoint', inp('prov-endpoint', d.endpoint, 'https://…'));
+      }
+      // Credential inputs depend on the auth mode.
+      if (authMode === 'api_key') {
+        if (kind === 'bedrock') {
+          row('Access key ID', inp('prov-aws-key', '', 'AKIA…'));
+          row('Secret access key', inp('prov-aws-secret', '', '', 'password'));
+          row('Session token (optional)', inp('prov-aws-session', '', '', 'password'));
+        } else {
+          row('API key', inp('prov-value', '', 'paste the provider key', 'password'));
+        }
+      } else if (authMode === 'aws_bearer_token_bedrock') {
+        row('AWS bearer token', inp('prov-bearer', '', 'ABS…', 'password'));
+      } else if (authMode === 'aws_assume_role') {
+        row('Role ARN', inp('prov-role-arn', '', 'arn:aws:iam::123456789012:role/membrane'));
+        row('External ID (optional)', inp('prov-external-id', '', ''));
+      } else {
+        row('', '<span class="muted">Uses the host\u2019s ambient identity — no key is stored.</span>');
+      }
+      return `<div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;max-width:720px">${g.join('')}</div>`;
+    }
+
+    function updateProviderPreview() {
+      const preview = document.getElementById('prov-preview');
+      if (!preview) return;
+      const kind = (document.getElementById('prov-kind') || {}).value || 'openai';
+      const name = providerNameFromForm();
+      // Secret-backed auth modes hold a sealed secret reference.
+      if (!authStoresSecret(currentAuthMode(kind))) {
+        preview.textContent = AUTH_LABELS[currentAuthMode(kind)] + ' — no stored secret';
+        return;
+      }
+      preview.textContent = name ? ('secret:' + name) : 'secret:<name>';
+    }
+
+    function refreshProviderForm() {
+      const kind = (document.getElementById('prov-kind') || {}).value || 'openai';
+      const box = document.getElementById('prov-fields');
+      const prevKind = box ? (box.dataset.kind || '') : '';
+      const prevName = ((document.getElementById('prov-name') || {}).value || '').trim();
+      let nextName = prevName;
+      if (!nextName) nextName = defaultProviderName(kind);
+      if (prevKind && prevName === defaultProviderName(prevKind)) nextName = defaultProviderName(kind);
+      if (box) {
+        box.innerHTML = fieldHTML(kind, famDef(kind), currentAuthMode(kind), nextName);
+        box.dataset.kind = kind;
+      }
+      const nm = document.getElementById('prov-name');
+      if (nm) nm.addEventListener('input', updateProviderPreview);
+      const auth = document.getElementById('prov-auth');
+      if (auth) auth.addEventListener('change', refreshProviderForm);
+      updateProviderPreview();
+    }
+
+    // providerFormBody reads the family + auth-mode driven form into a
+    // ProviderInput. For Bedrock api_key the three AWS fields are packed into one
+    // sealed JSON value; ambient modes carry no value.
+    function providerFormBody() {
+      const kind = (document.getElementById('prov-kind') || {}).value || 'openai';
+      const authMode = currentAuthMode(kind);
+      const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+      const models = val('prov-models').split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+      let value = '';
+      if (authMode === 'api_key') {
+        if (kind === 'bedrock') {
+          const obj = { access_key_id: val('prov-aws-key'), secret_access_key: val('prov-aws-secret') };
+          const s = val('prov-aws-session');
+          if (s) obj.session_token = s;
+          value = (obj.access_key_id || obj.secret_access_key) ? JSON.stringify(obj) : '';
+        } else {
+          value = val('prov-value');
+        }
+      } else if (authMode === 'aws_bearer_token_bedrock') {
+        value = val('prov-bearer');
+      }
+      return {
+        name: providerNameFromForm(), family: kind, authMode,
+        roleArn: val('prov-role-arn'), externalId: val('prov-external-id'),
+        models, defaultModel: val('prov-default'),
+        endpoint: val('prov-endpoint'), deployment: val('prov-deployment'),
+        region: val('prov-region'), value,
+      };
+    }
+
+    async function saveProvider(body) {
+      const box = document.getElementById('prov-msg');
+      const fail = (m) => { if (box) box.innerHTML = '<span class="pill bad">error</span> <span class="muted">' + esc(m) + '</span>'; };
+      if (!body.name) return fail('provider name is required');
+      if (!body.models || !body.models.length) return fail('at least one allowed model is required');
+      if (!body.defaultModel) return fail('a default model is required');
+      if (body.models.indexOf(body.defaultModel) < 0) return fail('the default model must be one of the allowed models');
+      if (body.authMode === 'api_key' && !body.value) return fail('the API key is required');
+      if (body.authMode === 'aws_bearer_token_bedrock' && !body.value) return fail('the AWS bearer token is required');
+      if (body.authMode === 'aws_assume_role' && !body.roleArn) return fail('a role ARN is required');
+      const res = await fetch('/api/console/providers',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok && b.applied) { show('providers'); return; }
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.error || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    async function deleteProvider(name) {
+      const res = await fetch('/api/console/providers/' + encodeURIComponent(name), { method: 'DELETE' });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok) { show('providers'); return; }
+      const box = document.getElementById('prov-msg');
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.error || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    function newPathwayBlock() {
+      return capBlock({ pathway: '', strategy: 'priority', targets: [{ provider: providerNamesCache[0] || '' }] });
+    }
+
+    // --- new-pathway wizard --------------------------------------------------
+    // Creating a pathway requires BOTH its routing (pathways kind) and its
+    // Membrane policy (permeability kind): the loader is fail-closed on the link
+    // between them, so saving either alone is rejected. The wizard collects both
+    // and submits them atomically via POST /api/console/pathways (one validate →
+    // write → reload). This avoids the dead-ends where a half-created pathway (no
+    // permeability, or no caller) blocks the save.
+    let pathwayWizard = { step: 1 };
+
+    async function pathwayWizardOpen() {
+      pathwayWizard = { step: 1 };
+      await loadProviderNames();
+      await loadOperations();
+      renderPathwayWizard();
+    }
+
+    function wizardProviderFilter() {
+      const q = String((document.getElementById('wiz-prov-filter') || {}).value || '').trim().toLowerCase();
+      const items = [...document.querySelectorAll('#wiz-provider-list label[data-name]')];
+      let visible = 0;
+      for (const item of items) {
+        const nm = item.dataset.name || '';
+        const show = !q || nm.indexOf(q) >= 0;
+        item.style.display = show ? '' : 'none';
+        if (show) visible += 1;
+      }
+      const empty = document.getElementById('wiz-prov-empty');
+      if (empty) empty.style.display = visible ? 'none' : '';
+    }
+
+    function wizardProviderSyncDefault() {
+      const selected = [...document.querySelectorAll('.wiz-prov:checked')].map((c) => c.value.trim()).filter(Boolean);
+      const sel = document.getElementById('wiz-default');
+      if (sel) {
+        const prev = sel.value;
+        const options = selected.length
+          ? selected.map((n) => `<option value="${attr(n)}">${esc(n)}</option>`).join('')
+          : '<option value="">(select provider above)</option>';
+        sel.innerHTML = options;
+        if (selected.indexOf(prev) >= 0) sel.value = prev;
+      }
+      const count = document.getElementById('wiz-prov-count');
+      if (count) count.textContent = selected.length + ' selected';
+    }
+
+    function wizardProviderSelectAll(on) {
+      const boxes = [...document.querySelectorAll('.wiz-prov')];
+      for (const b of boxes) b.checked = !!on;
+      wizardProviderSyncDefault();
+    }
+
+    function wirePathwayWizardStep1() {
+      const f = document.getElementById('wiz-prov-filter');
+      if (f) f.addEventListener('input', wizardProviderFilter);
+      document.querySelectorAll('.wiz-prov').forEach((el) => el.addEventListener('change', wizardProviderSyncDefault));
+      const op = document.getElementById('wiz-operation');
+      if (op) op.addEventListener('change', wizardOperationChanged);
+      wizardProviderFilter();
+      wizardProviderSyncDefault();
+    }
+
+    // wizardOperationChanged updates the live route/vocabulary hint and resets any
+    // not-yet-edited permeability prefill so Step 2 shows the chosen operation's
+    // field palette.
+    function wizardOperationChanged() {
+      const sel = document.getElementById('wiz-operation');
+      const opName = sel ? sel.value : 'chat';
+      const o = operationsByName[opName];
+      const hint = document.getElementById('wiz-op-hint');
+      if (hint) {
+        hint.textContent = o
+          ? ('Egress route ' + (o.route || '') + (o.restricted ? ' — permeability fields are restricted to this operation\u2019s vocabulary.' : ' — permeability fields are unrestricted (chat).'))
+          : 'Egress route /v1/chat — permeability fields are unrestricted (chat).';
+      }
+      // Drop any auto-suggested (unedited) permeability so Step 2 re-prefills for
+      // the new operation. User-entered values (perm.edited) are preserved.
+      if (pathwayWizard.perm && !pathwayWizard.perm.edited) pathwayWizard.perm = null;
+    }
+
+    function renderPathwayWizard() {
+      const section = document.getElementById('view');
+      const names = [...providerNamesCache];
+      const routing = pathwayWizard.data || {};
+      const perm = pathwayWizard.perm || {};
+      const selectedProviders = new Set(routing.providers || []);
+      const checks = names.length
+        ? names.map((n) => `
+            <label data-name="${attr(String(n || '').toLowerCase())}">
+              <input type="checkbox" class="wiz-prov" value="${attr(n)}"${selectedProviders.has(n) ? ' checked' : ''}>${esc(n)}
+            </label>`).join('')
+        : '<span class="muted">(add a provider first — Providers screen)</span>';
+      const currentOp = routing.operation || 'chat';
+      const opList = operationsCache.length ? operationsCache : [{ operation: 'chat', route: '/v1/chat', restricted: false }];
+      const opOptions = opList
+        .map((o) => `<option value="${attr(o.operation)}"${o.operation === currentOp ? ' selected' : ''}>${esc(o.operation)}</option>`)
+        .join('');
+      const palette = operationPalette(currentOp);
+      const curOpView = operationsByName[currentOp];
+      const opHint = curOpView
+        ? ('Egress route ' + (curOpView.route || '') + (curOpView.restricted ? ' — permeability fields are restricted to this operation\u2019s vocabulary.' : ' — permeability fields are unrestricted (chat).'))
+        : 'Egress route /v1/chat — permeability fields are unrestricted (chat).';
+      const selectedNames = names.filter((n) => selectedProviders.has(n));
+      const defaultNames = selectedNames.length ? selectedNames : names;
+      const defOptions = defaultNames.length
+        ? defaultNames.map((n) => `<option value="${attr(n)}"${(routing.defaultProvider || defaultNames[0]) === n ? ' selected' : ''}>${esc(n)}</option>`).join('')
+        : '<option value="">(none)</option>';
+      const step1 = `
+        <div id="wiz-step1" class="wiz-step" style="${pathwayWizard.step === 1 ? '' : 'display:none'}">
+          <h3>Step 1 — Routing</h3>
+          <p class="muted wiz-hint">Name the pathway, attach one or more providers, and pick the default.</p>
+          <div class="wiz-grid">
+            <label class="wiz-lbl" for="wiz-name">Pathway name</label>
+            <input id="wiz-name" class="wiz-input" placeholder="e.g. reason" value="${attr(routing.pathway || '')}">
+            <label class="wiz-lbl" for="wiz-operation">Operation</label>
+            <div><select id="wiz-operation">${opOptions}</select>
+              <div id="wiz-op-hint" class="muted wiz-hint" style="margin-top:4px">${esc(opHint)}</div></div>
+            <label class="wiz-lbl" for="wiz-cascade">Cascade</label>
+            <label class="wiz-inline-check">
+              <input type="checkbox" id="wiz-cascade"${routing.cascadeAllowed ? ' checked' : ''}> cascade allowed
+            </label>
+            <div class="wiz-lbl">Providers</div>
+            <div class="wiz-providers">
+              <div class="wiz-provider-tools">
+                <input id="wiz-prov-filter" placeholder="Filter providers..." autocomplete="off">
+                <button type="button" data-act="wiz-providers-all">Select all</button>
+                <button type="button" data-act="wiz-providers-none">Clear</button>
+                <span id="wiz-prov-count" class="wiz-provider-count"></span>
+              </div>
+              <div id="wiz-provider-list" class="wiz-provider-list">${checks}</div>
+              <div id="wiz-prov-empty" class="wiz-provider-empty" style="display:none">No providers match this filter.</div>
+            </div>
+            <label class="wiz-lbl" for="wiz-default">Default provider</label>
+            <div><select id="wiz-default">${defOptions}</select></div>
+          </div>
+          <div class="wiz-actions">
+            <button class="primary" data-act="wizard-next">Next: Permeability</button>
+            <button data-act="wizard-cancel">Cancel</button>
+          </div>
+        </div>`;
+      const step2 = `
+        <div id="wiz-step2" class="wiz-step" style="${pathwayWizard.step === 2 ? '' : 'display:none'}">
+          <h3>Step 2 — Permeability</h3>
+          <p class="muted wiz-hint">Define what may cross the Membrane for this pathway. Prefilled with safe defaults — review and adjust. Identity/control fields are always rejected outbound.</p>
+          <div class="wiz-grid">
+            <label class="wiz-lbl" for="wiz-out">Outbound allow</label><input id="wiz-out" value="${attr(perm.outboundAllow || palette.out)}">
+            <label class="wiz-lbl" for="wiz-def">Inbound default</label><input id="wiz-def" value="${attr(perm.inboundDefault || palette.def)}">
+            <label class="wiz-lbl" for="wiz-rev">Inbound on-reveal</label><input id="wiz-rev" value="${attr(perm.inboundOnReveal || palette.rev)}">
+          </div>
+          <div class="wiz-actions">
+            <button data-act="wizard-back">Back</button>
+            <button class="primary" data-act="wizard-submit">Create pathway</button>
+            <button data-act="wizard-cancel">Cancel</button>
+          </div>
+        </div>`;
+      section.innerHTML = `
+        <div class="wiz-shell">
+        <h2>New Pathway <span class="muted">(routing + permeability, created together)</span></h2>
+        ${step1}${step2}
+        <div id="wiz-msg" style="margin-top:12px"></div>
+        </div>`;
+      if (pathwayWizard.step === 1) wirePathwayWizardStep1();
+    }
+
+    // pathwayWizardNext validates step 1 and stashes it before showing step 2.
+    function pathwayWizardNext() {
+      const name = (document.getElementById('wiz-name').value || '').trim();
+      const providers = [...document.querySelectorAll('.wiz-prov:checked')].map((c) => c.value.trim()).filter(Boolean);
+      const box = document.getElementById('wiz-msg');
+      const fail = (m) => { if (box) box.innerHTML = '<span class="pill bad">error</span> <span class="muted">' + esc(m) + '</span>'; };
+      if (!name) return fail('a pathway name is required');
+      if (!providers.length) return fail('attach at least one provider');
+      let defaultProvider = (document.getElementById('wiz-default').value || '').trim();
+      if (providers.indexOf(defaultProvider) < 0) defaultProvider = providers[0];
+      const opSel = document.getElementById('wiz-operation');
+      const operation = (opSel && opSel.value) ? opSel.value : 'chat';
+      pathwayWizard.data = {
+        pathway: name,
+        operation,
+        providers,
+        defaultProvider: defaultProvider || providers[0],
+        cascadeAllowed: document.getElementById('wiz-cascade').checked,
+      };
+      pathwayWizard.step = 2;
+      renderPathwayWizard();
+    }
+
+    async function pathwayWizardSubmit() {
+      const body = Object.assign({ operation: 'chat' }, pathwayWizard.data, {
+        outboundAllow: csvToList(document.getElementById('wiz-out').value),
+        inboundDefault: csvToList(document.getElementById('wiz-def').value),
+        inboundOnReveal: csvToList(document.getElementById('wiz-rev').value),
+      });
+      const box = document.getElementById('wiz-msg');
+      const res = await fetch('/api/console/pathways',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const b = await res.json().catch(() => ({}));
+      if (res.ok && b.applied) { show('pathways'); return; }
+      if (res.ok && b.unchanged) { show('pathways'); return; }
+      if (box) box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.reason || ('failed (' + res.status + ')')) + '</span>';
+    }
+
+    async function savePathways(version) {
+      const pathways = [...document.querySelectorAll('.cap-block')].map((block) => {
+        const providers = [...block.querySelectorAll('.cap-prov:checked')].map((c) => c.value.trim()).filter(Boolean);
+        return {
+          pathway: block.querySelector('.cap-name').value.trim(),
+          cascadeAllowed: block.querySelector('.cap-cascade').checked,
+          defaultProvider: block.querySelector('.cap-default').value.trim(),
+          providers,
+        };
+      });
+      const r = await saveForm('pathways', { pathways }, version);
+      formResult(document.getElementById('form-msg'), r);
+    }
+
+    // Delegated handler for all editor actions (buttons carry data-act).
+    async function onSectionClick(e) {
+      const link = e.target.closest('[data-view]');
+      if (link) { e.preventDefault(); show(link.dataset.view); return; }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      const ver = btn.dataset.version;
+      const handlers = {
+        'edit-pathways': editPathways,
+        'edit-callers': editCallers, 'edit-permeability': editPermeability,
+        'save-pathways': () => savePathways(ver),
+        'save-callers': () => saveCallers(ver), 'save-permeability': () => savePermeability(ver),
+        'cancel-pathways': () => show('pathways'),
+        'cancel-callers': () => show('callers'), 'cancel-permeability': () => show('permeability'),
+      };
+      if (handlers[act]) { await handlers[act](); return; }
+      if (act === 'save-secret-rotate') {
+        const nameEl = document.getElementById('sec-rotate-name');
+        const valEl = document.getElementById('sec-rotate-value');
+        const name = ((nameEl && nameEl.textContent) || '').trim();
+        const val = (valEl && valEl.value) || '';
+        await saveSecret(name, val);
+      } else if (act === 'rotate-secret') {
+        const name = btn.dataset.name;
+        const card = document.getElementById('sec-rotate-card');
+        const nameEl = document.getElementById('sec-rotate-name');
+        const valEl = document.getElementById('sec-rotate-value');
+        if (card) card.style.display = '';
+        if (nameEl) nameEl.textContent = name;
+        if (valEl) { valEl.value = ''; valEl.focus(); }
+        const box = document.getElementById('sec-msg');
+        if (box) box.innerHTML = '<span class="muted">Enter a new value and Save rotation for <code>secret:' + esc(name) + '</code>.</span>';
+      } else if (act === 'del-secret') {
+        if (!confirmDelete('secret', btn.dataset.name)) return;
+        await deleteSecret(btn.dataset.name);
+      } else if (act === 'save-provider') {
+        await saveProvider(providerFormBody());
+      } else if (act === 'rotate-provider') {
+        const d = btn.dataset;
+        const kind = document.getElementById('prov-kind');
+        if (kind) kind.value = d.family || 'local';
+        refreshProviderForm();
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        set('prov-name', d.name);
+        set('prov-models', d.models); set('prov-default', d.default);
+        set('prov-endpoint', d.endpoint); set('prov-deployment', d.deployment); set('prov-region', d.region);
+        updateProviderPreview();
+        const val = document.getElementById('prov-value') || document.getElementById('prov-bearer') || document.getElementById('prov-aws-key');
+        if (val) val.focus();
+        const box = document.getElementById('prov-msg');
+        if (box) {
+          const what = d.auth === 'aws_bearer_token_bedrock' ? 'AWS bearer token' : 'API key';
+          box.innerHTML = '<span class="muted">Enter a new ' + esc(what) + ' above and Add to rotate provider <code>' + esc(d.name) + '</code>.</span>';
+        }
+      } else if (act === 'del-provider') {
+        if (!confirmDelete('provider', btn.dataset.name)) return;
+        await deleteProvider(btn.dataset.name);
+      } else if (act === 'run-test') {
+        await runTest();
+      } else if (act === 'bundle-export') {
+        await bundleExport();
+      } else if (act === 'bundle-diff') {
+        await bundleDiff();
+      } else if (act === 'bundle-apply') {
+        await bundleApply();
+      } else if (act === 'bundle-upload') {
+        document.getElementById('bundle-file').click();
+      } else if (act === 'add-pathway') {
+        await pathwayWizardOpen();
+      } else if (act === 'wizard-next') {
+        pathwayWizardNext();
+      } else if (act === 'wiz-providers-all') {
+        wizardProviderSelectAll(true);
+      } else if (act === 'wiz-providers-none') {
+        wizardProviderSelectAll(false);
+      } else if (act === 'wizard-back') {
+        pathwayWizard.perm = {
+          outboundAllow: (document.getElementById('wiz-out').value || '').trim(),
+          inboundDefault: (document.getElementById('wiz-def').value || '').trim(),
+          inboundOnReveal: (document.getElementById('wiz-rev').value || '').trim(),
+        };
+        pathwayWizard.step = 1; renderPathwayWizard();
+      } else if (act === 'wizard-submit') {
+        await pathwayWizardSubmit();
+      } else if (act === 'wizard-cancel') {
+        show('pathways');
+      } else if (act === 'regen-caller') {
+        regenerateCallerDraft();
+      } else if (act === 'add-caller') {
+        await saveCaller();
+      } else if (act === 'copy-last-caller-key') {
+        const box = document.getElementById('caller-msg');
+        const ok = await copyText(lastCreatedCallerKey);
+        if (box) {
+          box.innerHTML += ok
+            ? ' <span class="pill ok">copied</span>'
+            : ' <span class="pill bad">copy failed</span> <span class="muted">select and copy manually</span>';
+        }
+      } else if (act === 'del-caller') {
+        if (!confirmDelete('caller', btn.dataset.keyid)) return;
+        await deleteCaller(btn.dataset.keyid);
+      } else if (act === 'del-pathway') {
+        const nameEl = btn.closest('.cap-block') && btn.closest('.cap-block').querySelector('.cap-name');
+        const name = (nameEl && nameEl.value) ? nameEl.value.trim() : '';
+        if (!confirmDelete('pathway draft', name)) return;
+        btn.closest('.cap-block').remove();
+      }
+    }
+
+    // --- declarative export / apply (bundle) ---------------------------------
+    // Export the whole live configuration as one YAML bundle (download + load
+    // into the editor), diff a candidate against the live store, and apply it
+    // atomically with an optimistic version check. Secrets stay by reference.
+    let bundleState = { version: '' };
+
+    async function declare() {
+      return `
+        <h2>Export / Apply <span class="muted">(declarative GitOps bundle)</span></h2>
+        <p class="muted">Export the entire live configuration as one YAML bundle, keep it in version control,
+          and apply it back. Apply validates and reconciles every kind atomically, then hot-reloads.
+          Secrets stay by reference (env:/file:/vault:); caller keys are hashes only — never values.</p>
+        <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
+          <button data-act="bundle-export">Export &amp; download</button>
+          <button data-act="bundle-upload">Load file…</button>
+          <input id="bundle-file" type="file" accept=".yaml,.yml,.txt" hidden>
+          <button data-act="bundle-diff">Diff</button>
+          <button data-act="bundle-apply" class="primary">Apply &amp; reload</button>
+        </div>
+        <textarea id="bundle-raw" spellcheck="false"
+          style="width:100%;height:360px;background:var(--bg);color:var(--fg);border:1px solid var(--border);
+          border-radius:6px;padding:12px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"
+          placeholder="Export the live config, or paste/load a bundle to diff and apply…"></textarea>
+        <div id="bundle-msg" style="margin-top:12px"></div>`;
+    }
+
+    function bundleMsg(kind, html) {
+      const cls = kind === 'ok' ? 'ok' : 'bad';
+      document.getElementById('bundle-msg').innerHTML =
+        `<span class="pill ${cls}">${kind === 'ok' ? 'ok' : 'error'}</span> <span class="muted">${html}</span>`;
+    }
+
+    async function bundleExport() {
+      const res = await fetch('/api/console/config/export');
+      if (!res.ok) { bundleMsg('bad', 'export failed (' + res.status + ')'); return; }
+      const raw = await res.text();
+      bundleState.version = res.headers.get('X-Config-Version') || '';
+      document.getElementById('bundle-raw').value = raw;
+      // Trigger a browser download of the exported bundle.
+      const blob = new Blob([raw], { type: 'application/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'membrane-config.yaml';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      bundleMsg('ok', 'exported live config (version ' + bundleState.version.slice(0, 12) + '…)');
+    }
+
+    async function bundleDiff() {
+      const raw = document.getElementById('bundle-raw').value;
+      const res = await fetch('/api/console/config/diff', { method: 'POST', body: raw });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) { bundleMsg('bad', b.error || ('diff failed (' + res.status + ')')); return; }
+      if (!b.valid) { bundleMsg('bad', esc(b.error || 'invalid bundle')); return; }
+      if (!b.changed) { bundleMsg('ok', 'no changes — bundle matches the live configuration'); return; }
+      const changed = (b.kinds || []).filter((k) => k.changed).map((k) => esc(k.kind)).join(', ');
+      bundleMsg('ok', 'valid — would change: <strong>' + (changed || 'nothing') + '</strong>');
+    }
+
+    async function bundleApply() {
+      const raw = document.getElementById('bundle-raw').value;
+      const res = await fetch('/api/console/config/apply',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw, version: bundleState.version }) });
+      const b = await res.json().catch(() => ({}));
+      if (b.version) bundleState.version = b.version;
+      if (b.applied) bundleMsg('ok', 'applied and reloaded');
+      else if (b.unchanged) bundleMsg('ok', 'no changes to apply');
+      else bundleMsg('bad', esc(b.reason || ('apply failed (' + res.status + ')')));
+    }
+
+    function bundleLoadFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        document.getElementById('bundle-raw').value = reader.result;
+        // A pasted/loaded bundle has no known base version; apply will proceed
+        // without the optimistic check (empty version) unless re-exported.
+        bundleState.version = '';
+        bundleMsg('ok', 'loaded ' + esc(file.name) + ' — Diff to preview, then Apply');
+      };
+      reader.readAsText(file);
+    }
+
+    // --- operations (C5) -----------------------------------------------------
+
+    async function reloads() {
+      const m = await api('/api/console/metrics');
+      const rows = (m.reloads || []).map((x) => `
+        <tr><td>${esc(x.result)}</td><td>${x.count}</td></tr>`).join('');
+      return `
+        <h2>Reload History <span class="muted">(config-as-code reload outcomes)</span></h2>
+        <table><thead><tr><th>Result</th><th>Count</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="2" class="empty">No reloads recorded yet.</td></tr>'}</tbody></table>
+        <p class="muted" style="margin-top:16px">A rejected reload keeps the last-good configuration serving.</p>`;
+    }
+
+    async function audit() {
+      const [usageRes, adminRes] = await Promise.all([
+        fetch('/api/console/audit/usage'), fetch('/api/console/audit/admin'),
+      ]);
+      let usageHtml;
+      if (usageRes.status === 503) {
+        usageHtml = '<p class="muted">Usage audit is unavailable. Enable a file audit sink (audit.sink: jsonlines with a file path) to view Interior-only usage records.</p>';
+      } else {
+        const u = await usageRes.json();
+        const rows = (u.records || []).map((r) => `
+          <tr><td>${esc(new Date(r.time).toLocaleString())}</td><td>${esc(r.callerId)}</td>
+          <td>${esc(r.pathway)}</td><td>${esc(r.outcome)}</td><td>${r.durationMs}</td>
+          <td>${r.totalTokens}</td><td>${r.stream ? 'yes' : '-'}</td></tr>`).join('');
+        usageHtml = `
+          <table><thead><tr><th>Time</th><th>Caller</th><th>Pathway</th><th>Outcome</th>
+            <th>Duration (ms)</th><th>Tokens</th><th>Stream</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="7" class="empty">No usage records yet.</td></tr>'}</tbody></table>`;
+      }
+      const a = await adminRes.json();
+      const arows = (a.entries || []).map((e) => `
+        <tr><td>${esc(new Date(e.time).toLocaleString())}</td><td>${esc(e.action)}</td>
+        <td>${esc(e.result)}</td><td>${esc(e.remote)}</td></tr>`).join('');
+      return `
+        <h2>Usage Audit <span class="muted">(Interior-only — no content, secrets, or topology)</span></h2>
+        ${usageHtml}
+        <h2 style="margin-top:28px">Admin Actions <span class="muted">(who / what / when — secret-free)</span></h2>
+        <table><thead><tr><th>Time</th><th>Action</th><th>Result</th><th>From</th></tr></thead>
+          <tbody>${arows || '<tr><td colspan="4" class="empty">No admin actions recorded this session.</td></tr>'}</tbody></table>`;
+    }
+
+    async function test() {
+      const caps = await api('/api/console/config/pathways').catch(() => ({ pathways: [] }));
+      const opts = (caps.pathways || []).map((c) => `<option value="${attr(c.pathway)}">${esc(c.pathway)}</option>`).join('')
+        || '<option value="chat">chat</option>';
+      return `
+        <h2>Test Pathway <span class="muted">(proxies to /v1/chat with a Caller Key)</span></h2>
+        <p class="muted">The console calls the data plane as a client. Responses are provider-neutral unless
+          you set Reveal; an unauthorized key returns the generic 403.</p>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;max-width:720px">
+          <label>Caller Key</label><input id="t-key" placeholder="&lt;key_id&gt;.&lt;secret&gt;" autocomplete="off">
+          <label>Pathway</label><select id="t-cap">${opts}</select>
+          <label>Prompt</label><textarea id="t-prompt" style="height:100px">Say hello in one short sentence.</textarea>
+          <label>Options</label><div>
+            <label style="margin-right:16px"><input type="checkbox" id="t-reveal"> Reveal (provider family + model)</label>
+            <label><input type="checkbox" id="t-stream"> Stream</label></div>
+        </div>
+        <div style="margin-top:16px"><button data-act="run-test">Send</button></div>
+        <h2 style="margin-top:24px">Response</h2>
+        <pre id="t-out" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;min-height:80px;white-space:pre-wrap;overflow:auto"></pre>`;
+    }
+
+    async function runTest() {
+      const out = document.getElementById('t-out');
+      out.textContent = '';
+      const key = document.getElementById('t-key').value.trim();
+      const stream = document.getElementById('t-stream').checked;
+      const request = {
+        pathway: document.getElementById('t-cap').value,
+        messages: [{ role: 'user', content: document.getElementById('t-prompt').value }],
+        reveal: document.getElementById('t-reveal').checked,
+        stream,
+      };
+      let res;
+      try {
+        // Use rawFetch so data-plane 401/403 responses (bad Caller Key) do not
+        // trigger the admin-login interceptor attached to window.fetch.
+        const headers = { 'Content-Type': 'application/json' };
+        if (consoleToken) headers['X-Console-Token'] = consoleToken;
+        res = await rawFetch('/api/console/test/chat',
+          { method: 'POST', headers,
+            body: JSON.stringify({ callerKey: key, request }) });
+      } catch (e) { out.textContent = 'request failed: ' + e.message; return; }
+      if (!stream) {
+        out.textContent = JSON.stringify(await res.json().catch(() => ({})), null, 2);
+        return;
+      }
+      // Stream: append SSE chunks as they arrive.
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        out.textContent += dec.decode(value, { stream: true });
+        out.scrollTop = out.scrollHeight;
+      }
+    }
+
+    const views = { dashboard, health, metrics, providers, pathways, secrets, callers, permeability, edit, declare, test, reloads, audit, settings };
+
+    let currentView = 'dashboard';
+
+    async function show(name) {
+      currentView = name;
+      document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.dataset.view === name));
+      const section = document.getElementById('view');
+      try { section.innerHTML = await views[name](); }
+      catch (e) { section.innerHTML = '<p class="empty">Failed to load: ' + esc(e.message) + '</p>'; }
+      if (name === 'edit') {
+        document.getElementById('edit-load').addEventListener('click', editLoad);
+        document.getElementById('edit-validate').addEventListener('click', editValidate);
+        document.getElementById('edit-apply').addEventListener('click', editApply);
+        editLoad();
+      }
+      if (name === 'declare') {
+        bundleState.version = '';
+        document.getElementById('bundle-file').addEventListener('change', (e) => bundleLoadFile(e.target.files[0]));
+      }
+      if (name === 'providers') {
+        const kind = document.getElementById('prov-kind');
+        if (kind) kind.addEventListener('change', refreshProviderForm);
+        refreshProviderForm();
+      }
+      if (name === 'callers') {
+        callerDraft = newCallerDraft('');
+        renderCallerDraft();
+        const nm = document.getElementById('cal-name');
+        if (nm) nm.addEventListener('input', () => {
+          // Keep generated IDs human-meaningful when the operator names the app.
+          callerDraft = newCallerDraft(nm.value || '');
+          renderCallerDraft();
+        });
+      }
+    }
+
+    document.querySelectorAll('nav a').forEach((a) => a.addEventListener('click', () => show(a.dataset.view)));
+    document.getElementById('view').addEventListener('click', onSectionClick);
+    document.getElementById('login-btn').addEventListener('click', submitLogin);
+    document.getElementById('login-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); });
+    document.getElementById('signout').addEventListener('click', signOut);
+
+    renderHeader();
+    show('dashboard');
+    setInterval(renderHeader, 5000);
+  </script>
+</body>
+</html>

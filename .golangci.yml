@@ -1,0 +1,69 @@
+# golangci-lint configuration (classic v1 schema).
+# Pinned to golangci-lint v1.64.x in CI (see .github/workflows/ci.yml).
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # Defaults
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Correctness / safety
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errorlint
+    - gosec
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    # Style / maintainability
+    - gocritic
+    - gocyclo
+    - goconst
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+    # Formatting / imports
+    - gofumpt
+    - goimports
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  goimports:
+    local-prefixes: github.com/inferencepath/membrane
+  gofumpt:
+    extra-rules: true
+  gosec:
+    excludes:
+      - G104 # handled by errcheck
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Test files may use dot-ish patterns and are less strict on some checks.
+    - path: _test\.go
+      linters:
+        - gosec
+        - gocyclo
+        - goconst
+    # Generated or vendored dirs (none today; backstop).
+    - path: vendor/
+      linters:
+        - all

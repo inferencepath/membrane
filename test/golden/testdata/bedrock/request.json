@@ -1,0 +1,16 @@
+{
+  "inferenceConfig": {
+    "maxTokens": 1024,
+    "temperature": 0.2
+  },
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "hi"
+        }
+      ],
+      "role": "user"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# Binaries
+/bin/
+/dist/
+/membrane
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage.out
+coverage.html
+cover.out
+
+# Go workspace / env
+go.work
+go.work.sum
+
+# Secrets must never be committed. These patterns are a backstop; the config
+# loader also rejects inline secrets.
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+# Secret *value* files (secrets.yaml / secrets.json / secrets.env / ...). This is
+# deliberately NOT a bare `secrets.*` glob: that also matched Go source such as
+# `secrets.go` (the sealed-secret store code), silently excluding it from the
+# repository. Keep this restricted to data formats and re-include source.
+secrets.*
+!secrets.go
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# SBOM / release artifacts
+/sbom/
+*.sbom.json
+*.cdx.json
+
+# Website (separate Next.js project; not part of the Membrane release)
+/website/node_modules/
+/website/.next/
+/website/out/

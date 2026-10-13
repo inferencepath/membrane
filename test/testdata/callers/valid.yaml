@@ -1,0 +1,6 @@
+# Test Caller Key store. Key: ck_demo.s3cr3t-demo-key (hash of the secret only).
+callers:
+  - key_id: ck_demo
+    caller_id: acme-app
+    name: Acme Demo App
+    hash: 458d6534a760ed4c8c2f1c8f86a517572cb56fa6a0f8554efdda2cb8532a4816

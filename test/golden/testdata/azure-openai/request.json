@@ -1,0 +1,9 @@
+{
+  "messages": [
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "temperature": 0.2
+}

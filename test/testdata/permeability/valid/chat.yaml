@@ -1,0 +1,8 @@
+version: 1
+pathways:
+  chat:
+    outbound:
+      allow: [messages, temperature, max_tokens, top_p, stop, stream]
+    inbound:
+      default: [message, finish_reason, usage]
+      on_reveal: [provider, model]

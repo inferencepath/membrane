@@ -1,0 +1,13 @@
+version: 1
+pathways:
+  chat:
+    outbound:
+      allow: [messages, temperature]
+    inbound:
+      default: [message, finish_reason, usage]
+      on_reveal: [provider, model]
+  embeddings:
+    outbound:
+      allow: [input, dimensions]
+    inbound:
+      default: [embedding, usage]

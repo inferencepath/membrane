@@ -1,0 +1,46 @@
+# Commit message linting — Conventional Commits.
+#
+# Enforced locally (optional git hook) and intended for CI. Run with:
+#   npx --yes @commitlint/cli@19 --from=origin/main --config .commitlintrc.yaml
+#
+# Conventional Commits: <type>(<optional scope>): <description>
+#   feat:     a new feature
+#   fix:      a bug fix
+#   docs:     documentation only
+#   test:     adding or correcting tests
+#   refactor: neither fixes a bug nor adds a feature
+#   perf:     performance improvement
+#   build:    build system / dependencies
+#   ci:       CI configuration
+#   chore:    other changes that don't modify src or test files
+#   revert:   reverts a previous commit
+extends:
+  - "@commitlint/config-conventional"
+
+rules:
+  # type is required and must be one of the set below.
+  type-enum:
+    - 2
+    - always
+    - - feat
+      - fix
+      - docs
+      - test
+      - refactor
+      - perf
+      - build
+      - ci
+      - chore
+      - revert
+  # Keep the subject concise and imperative.
+  subject-empty:
+    - 2
+    - never
+  subject-full-stop:
+    - 2
+    - never
+    - "."
+  header-max-length:
+    - 2
+    - always
+    - 100

@@ -1,0 +1,11 @@
+{
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "model": "golden-model",
+  "temperature": 0.2
+}

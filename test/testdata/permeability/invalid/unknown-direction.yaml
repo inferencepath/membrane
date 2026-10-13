@@ -1,0 +1,9 @@
+version: 1
+pathways:
+  chat:
+    outbound:
+      allow: [messages]
+    sideways:
+      allow: [messages]
+    inbound:
+      default: [message]

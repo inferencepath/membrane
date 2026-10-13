@@ -1,0 +1,11 @@
+{
+  "messages": [
+    {
+      "content": "hi",
+      "role": "user"
+    }
+  ],
+  "model": "golden-model",
+  "stream": false,
+  "temperature": 0.2
+}
