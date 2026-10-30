@@ -36,10 +36,8 @@ func sampleInput(value string) console.ProviderInput {
 	}
 }
 
-// TestProviderAdapterSetWritesSecretAndProviderAtomically proves one Set seals
-// the value AND creates the provider definition — both present after a single
-// call — and that the value round-trips only through the sealed store, never the
-// provider row (which holds a reference).
+// TestProviderAdapterSetWritesSecretAndProviderAtomically checks that one Set
+// stores both the sealed value and a provider row that only references it.
 func TestProviderAdapterSetWritesSecretAndProviderAtomically(t *testing.T) {
 	a, mgr, st := newProviderAdapter(t)
 	const value = "sk-atomic-canary"
@@ -56,7 +54,7 @@ func TestProviderAdapterSetWritesSecretAndProviderAtomically(t *testing.T) {
 		t.Fatalf("sealed value = %q, want %q", got, value)
 	}
 
-	// Provider exists as a reference only (never the plaintext).
+	// The provider row holds a reference, not the plaintext.
 	provs, err := st.ReadProviders()
 	if err != nil {
 		t.Fatalf("read providers: %v", err)
@@ -74,7 +72,7 @@ func TestProviderAdapterListShowsSealedAndUsedBy(t *testing.T) {
 	if err := a.Set(sampleInput("sk-value")); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	// Wire a pathway target that uses the provider.
+	// Add a pathway that uses the provider.
 	exec := func(q string) {
 		if _, err := st.DB().Exec(q); err != nil {
 			t.Fatalf("seed %q: %v", q, err)
@@ -115,12 +113,12 @@ func TestProviderAdapterDeleteGuardAndSuccess(t *testing.T) {
 	exec(`INSERT INTO pathways (name, cascade_allowed, default_provider) VALUES ('chat', 0, 'openai-main')`)
 	exec(`INSERT INTO pathway_providers (pathway, provider) VALUES ('chat', 'openai-main')`)
 
-	// Referenced ⇒ refused.
+	// Refused while in use.
 	if _, err := a.Delete("openai-main"); err == nil {
 		t.Fatal("expected delete to be refused while referenced by a pathway")
 	}
 
-	// Detach the target, then delete succeeds and removes both secret + provider.
+	// Once detached, delete removes both the secret and the provider.
 	exec(`DELETE FROM pathway_providers WHERE provider = 'openai-main'`)
 	ok, err := a.Delete("openai-main")
 	if err != nil {

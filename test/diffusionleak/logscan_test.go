@@ -1,6 +1,6 @@
-// Log-scan coverage: across the rotation and failover
-// paths, nothing on the egress side — no Egress Identity secret (pre- or
-// post-rotation) and no Caller identity/Key — may appear in Membrane's logs.
+// Log-scan coverage: on the rotation and failover paths, no Egress Identity
+// secret (before or after rotation) and no Caller identity or Caller Key may
+// appear in the Membrane's logs.
 package diffusionleak
 
 import (
@@ -137,7 +137,7 @@ func TestLogsCleanAcrossRotationAndFailover(t *testing.T) {
 		_ = resp.Body.Close()
 	}
 
-	// Request 1: failover primary→secondary (secondary uses v1 secret).
+	// Request 1: fails over from primary to secondary (secondary uses the v1 secret).
 	doPost()
 	if secondaryAuth != secondaryV1 {
 		t.Fatalf("secondary received %q, want pre-rotation secret", secondaryAuth)

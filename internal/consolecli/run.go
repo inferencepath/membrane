@@ -9,10 +9,9 @@ import (
 	"github.com/inferencepath/membrane/internal/server/console"
 )
 
-// Run executes a `config` subcommand (export|diff|apply) and returns a process
-// exit code: 0 on success, 1 on a runtime/validation failure, 2 on a usage
-// error. All human output goes to stdout; errors and status to stderr. It is the
-// entrypoint wired behind `membrane config ...`.
+// Run executes a `membrane config` subcommand (export, diff, or apply) and
+// returns the exit code: 0 on success, 1 on a runtime or validation failure, 2
+// on a usage error. Results go to stdout; errors and status go to stderr.
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, usage)
@@ -90,8 +89,8 @@ func runSub(sub string, args []string, stdout, stderr io.Writer) int {
 	return 2 // unreachable
 }
 
-// resolveToken turns a token reference into a value (never printed). An empty
-// ref means loopback-only access (no token).
+// resolveToken turns a token reference into its value, which is never printed.
+// An empty ref means loopback-only access.
 func resolveToken(ref string) (string, error) {
 	if ref == "" {
 		return "", nil
@@ -153,8 +152,8 @@ func doApply(c *Client, cf *commonFlags, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	// Fetch the live version for an optimistic concurrency check, so a bundle
-	// applied against a changed server is rejected rather than clobbering it.
+	// Send the live version so the apply is rejected if the server changed in
+	// the meantime.
 	_, version, verr := c.Export()
 	if verr != nil {
 		fmt.Fprintf(stderr, "apply: fetch current version: %v\n", verr)
@@ -185,7 +184,7 @@ func printDiff(w io.Writer, diff console.BundleDiff) {
 		return
 	}
 	if !diff.Changed {
-		fmt.Fprintln(w, "no changes — bundle matches the live configuration")
+		fmt.Fprintln(w, "no changes: the bundle matches the live configuration")
 		return
 	}
 	fmt.Fprintln(w, "changes:")
@@ -198,9 +197,9 @@ func printDiff(w io.Writer, diff console.BundleDiff) {
 	}
 }
 
-// --- I/O helpers (indirection points kept small for testability) -------------
+// I/O helpers, replaceable in tests.
 
-// stdin is the default diff/apply input source; overridable in tests.
+// stdin is the default diff and apply input.
 var stdin io.Reader = os.Stdin
 
 func readInput(path string, in io.Reader) ([]byte, error) {

@@ -1,15 +1,12 @@
 package types
 
-// This file defines the logical, provider-agnostic audio API DTOs for the
-// `audio_speech` (text-to-speech) and `audio_transcription` (speech-to-text)
-// operations. As with the other operations the Caller Key is carried in the
-// request transport, never in the body, and the Reveal flag is Interior-only and
-// never crosses the Membrane.
+// Audio API shapes for the audio_speech (text-to-speech) and
+// audio_transcription (speech-to-text) operations.
 
-// ---- audio_speech (text-to-speech) ----
+// audio_speech
 
-// SpeechRequest is the inbound logical text-to-speech request. The synthesized
-// audio is returned as a binary response body (not JSON).
+// SpeechRequest is the inbound text-to-speech request. The synthesized audio is
+// returned as a binary response body.
 type SpeechRequest struct {
 	Pathway string `json:"pathway"`
 	Input   string `json:"input"`
@@ -18,20 +15,18 @@ type SpeechRequest struct {
 	Format string `json:"format,omitempty"`
 	// Speed optionally adjusts playback speed.
 	Speed *float64 `json:"speed,omitempty"`
-	// Reveal is the Interior-only opt-in to receive provider/model (via response
-	// headers). It is consumed on the Interior and MUST NOT cross the Membrane.
+	// Reveal asks for the provider and model in response headers. It is
+	// consumed on the Interior and does not cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
-// SpeechChunk is one incremental unit relayed on the inward (Membrane→Interior)
-// path for a speech synthesis. The FIRST chunk is a Head carrying the response
-// Content-Type and the (ungated) Provider/Model; subsequent chunks carry Audio
-// bytes; the final chunk has Done set. The handler gates Provider/Model by the
-// Reveal flag before surfacing them as response headers. SpeechChunk is an inward
-// relay type and never crosses the Membrane outward.
+// SpeechChunk is one unit of synthesized audio relayed on the inward path. The
+// first chunk is a Head carrying the Content-Type and the ungated Provider and
+// Model; later chunks carry Audio, and the last has Done set. The handler gates
+// Provider and Model on Reveal before writing them as headers.
 type SpeechChunk struct {
 	Head        bool
 	ContentType string
@@ -41,11 +36,11 @@ type SpeechChunk struct {
 	Done        bool
 }
 
-// ---- audio_transcription (speech-to-text) ----
+// audio_transcription
 
-// TranscriptionRequest is the inbound logical speech-to-text request. The audio
-// bytes arrive as a multipart upload; the handler extracts them (dropping the
-// client filename and any extra parts) along with the allowlisted form fields.
+// TranscriptionRequest is the inbound speech-to-text request. The handler reads
+// the audio and the allowlisted form fields from a multipart upload, dropping
+// the client filename and any extra parts.
 type TranscriptionRequest struct {
 	Pathway        string
 	File           []byte
@@ -62,9 +57,9 @@ type TranscriptionUsage struct {
 	Seconds float64 `json:"seconds,omitempty"`
 }
 
-// CanonicalTranscription is the provider-agnostic transcription result assembled
-// on the inward path. Provider and Model are surfaced only when the Reveal flag
-// was set (gated by the inbound Permeability on_reveal set).
+// CanonicalTranscription is the transcription result assembled on the inward
+// path. Provider and Model reach the Caller only on Reveal, gated by the inbound
+// Permeability on_reveal set.
 type CanonicalTranscription struct {
 	PathwayID PathwayID
 	Text      string
@@ -74,8 +69,8 @@ type CanonicalTranscription struct {
 	Model     string
 }
 
-// TranscriptionResponse is the Caller-facing, provider-neutral transcription
-// response. Provider and Model are populated only when the Caller set Reveal.
+// TranscriptionResponse is the transcription response returned to the Caller.
+// Provider and Model are set only when the Caller requested Reveal.
 type TranscriptionResponse struct {
 	Pathway  string             `json:"pathway"`
 	Text     string             `json:"text"`

@@ -94,7 +94,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 
-	// System role lifted to top-level systemInstruction, not left in contents.
+	// The system turn moves to systemInstruction.
 	si := gotBody["systemInstruction"].(map[string]any)
 	parts := si["parts"].([]any)
 	if parts[0].(map[string]any)["text"] != "be terse" {
@@ -103,7 +103,7 @@ func TestCompleteToolCalling(t *testing.T) {
 	if contents, _ := gotBody["contents"].([]any); len(contents) != 1 {
 		t.Errorf("contents = %v (system should be lifted out)", gotBody["contents"])
 	}
-	// Neutral tools → Gemini functionDeclarations shape.
+	// Neutral tools map to functionDeclarations.
 	tool0 := gotBody["tools"].([]any)[0].(map[string]any)
 	decl0 := tool0["functionDeclarations"].([]any)[0].(map[string]any)
 	if decl0["name"] != "get_weather" {
@@ -117,7 +117,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Errorf("functionCallingConfig = %v", tc)
 	}
 
-	// Response functionCall → canonical; finish normalized to tool_calls.
+	// functionCall maps to a canonical tool call with finish reason tool_calls.
 	if len(resp.Message.ToolCalls) != 1 {
 		t.Fatalf("tool_calls = %+v", resp.Message.ToolCalls)
 	}
@@ -154,7 +154,7 @@ func TestBuildBodyToolResultRoundTrip(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 	contents := gotBody["contents"].([]any)
-	// Assistant turn → model role with a functionCall part.
+	// An assistant turn maps to the model role with a functionCall part.
 	model := contents[1].(map[string]any)
 	if model["role"] != "model" {
 		t.Errorf("assistant role = %v, want model", model["role"])
@@ -164,7 +164,7 @@ func TestBuildBodyToolResultRoundTrip(t *testing.T) {
 	if fc["name"] != "get_weather" {
 		t.Errorf("functionCall = %v", fc)
 	}
-	// Tool-result turn → user role with a functionResponse part.
+	// A tool-result turn maps to the user role with a functionResponse part.
 	toolTurn := contents[2].(map[string]any)
 	if toolTurn["role"] != "user" {
 		t.Errorf("tool-result role = %v, want user", toolTurn["role"])
@@ -348,7 +348,7 @@ func TestTokenSourceFailureIsLocal(t *testing.T) {
 	if err == nil {
 		t.Fatal("want local pre-egress error")
 	}
-	// A token-source failure must fail closed BEFORE any upstream contact.
+	// A token-source failure must fail closed before any upstream contact.
 	if hit {
 		t.Error("request reached upstream despite token-source failure")
 	}

@@ -60,15 +60,14 @@ func (s *Server) Handle(pattern string, h http.Handler) {
 	s.mux.Handle(pattern, h)
 }
 
-// Handler returns the server's HTTP handler (useful for tests).
+// Handler returns the server's HTTP handler.
 func (s *Server) Handler() http.Handler { return s.httpSrv.Handler }
 
 // Addr returns the configured listen address.
 func (s *Server) Addr() string { return s.httpSrv.Addr }
 
 // Ready reports whether the server is ready and, if not, a secret-free reason.
-// It is a lock-free read, safe for concurrent callers (e.g. the Membrane Console
-// reading the data-plane server's readiness from a separate listener).
+// It is lock-free and safe for concurrent use, such as by the Console.
 func (s *Server) Ready() (bool, string) {
 	ready := s.ready.Load()
 	reason, _ := s.notReadyReason.Load().(string)

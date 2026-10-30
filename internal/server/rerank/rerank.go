@@ -1,11 +1,9 @@
-// Package rerank implements the logical /v1/rerank handler: Admit → Authorize →
-// Resolve (operation-gated) → Scrub → Transporter (+ Egress Identity) → inward
-// Scrub. Like the chat and embeddings handlers, no endpoint here accepts or emits
-// provider endpoints, credentials, or caller identity on the egress side.
+// Package rerank implements the logical /v1/rerank handler: Admit, Authorize,
+// Resolve, Scrub, Transporter with Egress Identity, then the inward Scrub. No
+// provider endpoint, credential, or caller identity crosses to the egress side.
 //
-// It reuses the chat Snapshot (the per-request, immutable config bundle) since
-// that bundle is operation-agnostic; only the request/response shape and the
-// rerank-specific transport capability differ.
+// It uses the chat Snapshot, which is operation-agnostic; only the request and
+// response shapes and the transport capability differ.
 package rerank
 
 import (
@@ -29,8 +27,7 @@ import (
 // Route is the path this handler serves.
 const Route = "/v1/rerank"
 
-// Stable, machine-handleable error codes, mirroring the chat handler's
-// provider-neutral error contract.
+// Stable error codes, matching the chat handler's provider-neutral errors.
 const (
 	codeMethodNotAllowed    = "method_not_allowed"
 	codeUnauthorized        = "unauthorized"
@@ -55,7 +52,7 @@ type Handler struct {
 	now     func() time.Time
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink. When unset, audit
@@ -68,7 +65,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -91,8 +88,8 @@ func NewReloadable(current func() *chat.Snapshot, logger *slog.Logger, rec metri
 }
 
 // observe records one served request to the identity-free metrics and the
-// Interior-only audit Sink. Rerank reuses the Pathway-keyed chat recorder
-// (stream=false); only total tokens are reported.
+// Interior-only audit Sink, using the Pathway-keyed chat recorder. Rerank
+// reports only total tokens.
 func (h *Handler) observe(callerID string, capID types.PathwayID, outcome metrics.Outcome, latency time.Duration, total int) {
 	h.metrics.RecordChat(string(capID), false, outcome, latency, 0, 0, total)
 	h.audit.Write(audit.Record{
@@ -160,9 +157,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Route-dispatch guard: /v1/rerank serves only Pathways whose
-	// operation is `rerank`. Any other operation is reported with the same generic
-	// unresolved_pathway error — no operation or Pathway enumeration oracle.
+	// This route serves only rerank Pathways. Any other operation gets the
+	// generic unresolved_pathway error so Pathways cannot be enumerated.
 	if op, ok := snap.Resolver.Operation(capID); !ok || op != types.OperationRerank {
 		writeError(w, http.StatusBadRequest, codeUnresolvedPathway, "no binding for the requested pathway")
 		return
@@ -235,8 +231,8 @@ func planTiers(plan []resolve.PlanTarget) []transporter.PlanTier {
 }
 
 // buildCanonical assembles the provider-agnostic CanonicalRequest from the rerank
-// request. Only the outbound-permeable fields are carried; the Scrub then rebuilds
-// the egress payload from the Pathway's outbound allowlist.
+// request. The Scrub then rebuilds the egress payload from the Pathway's
+// outbound allowlist.
 func buildCanonical(capID types.PathwayID, req types.RerankRequest, caller types.Caller) types.CanonicalRequest {
 	docs := make([]any, len(req.Documents))
 	for i, d := range req.Documents {
@@ -269,7 +265,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

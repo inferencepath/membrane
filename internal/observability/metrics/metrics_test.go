@@ -11,7 +11,7 @@ import (
 )
 
 func TestNopIsSafe(t *testing.T) {
-	// Must not panic and must satisfy the Recorder interface.
+	// Nop satisfies Recorder and must not panic.
 	var r metrics.Recorder = metrics.Nop{}
 	r.RecordChat("chat", true, metrics.OutcomeSuccess, time.Second, 1, 2, 3)
 }
@@ -46,8 +46,8 @@ func TestRegistryExposition(t *testing.T) {
 		}
 	}
 
-	// Histogram cumulative buckets: both success unary observations (30ms, 70ms)
-	// are <= 0.1s; exactly one is <= 0.05s.
+	// Buckets are cumulative: both unary successes (30ms and 70ms) fall in
+	// le=0.1, and one falls in le=0.05.
 	if !strings.Contains(out, `le="0.1"} 2`) {
 		t.Errorf("expected le=0.1 bucket to count 2:\n%s", out)
 	}
@@ -75,7 +75,7 @@ func TestRegistrySnapshot(t *testing.T) {
 	if len(snap.Tokens) != 1 || snap.Tokens[0].Total != 12 {
 		t.Fatalf("tokens = %+v", snap.Tokens)
 	}
-	// Health is sorted by (pathway, provider): anthropic before openai.
+	// Health is sorted by pathway, then provider: anthropic before openai.
 	if len(snap.Health) != 2 || snap.Health[0].Provider != "anthropic" || snap.Health[0].Healthy {
 		t.Fatalf("health = %+v", snap.Health)
 	}
@@ -85,7 +85,7 @@ func TestRegistrySnapshot(t *testing.T) {
 	if len(snap.Failovers) != 1 || snap.Failovers[0].Count != 1 {
 		t.Fatalf("failovers = %+v", snap.Failovers)
 	}
-	// Authz sorted by decision: allow before deny.
+	// Authz is sorted by decision: allow before deny.
 	if len(snap.Authz) != 2 || snap.Authz[0].Decision != "allow" || snap.Authz[1].Decision != "deny" {
 		t.Fatalf("authz = %+v", snap.Authz)
 	}
@@ -107,14 +107,14 @@ func TestRegistryNoIdentityLabels(t *testing.T) {
 	var sb strings.Builder
 	reg.WriteProm(&sb)
 	out := strings.ToLower(sb.String())
-	// Caller/org identity and secrets must NEVER appear anywhere in the exposition.
+	// Caller or org identity and secrets must not appear in the exposition.
 	for _, forbidden := range []string{"caller", "authorization", "secret", "key_id", "bearer", "tenant"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("metrics exposition leaked %q:\n%s", forbidden, sb.String())
 		}
 	}
-	// Per-request series must NOT carry a provider label (provider family is only
-	// an operational label on the resilience series, never on request metrics).
+	// Per-request series must not carry a provider label; Provider family
+	// appears only on the resilience series.
 	for _, line := range strings.Split(sb.String(), "\n") {
 		if strings.HasPrefix(line, "inferencepath_chat_requests_total{") ||
 			strings.HasPrefix(line, "inferencepath_chat_request_duration_seconds") ||
@@ -128,7 +128,7 @@ func TestRegistryNoIdentityLabels(t *testing.T) {
 
 func TestRegistryResilienceExposition(t *testing.T) {
 	reg := metrics.NewRegistry()
-	// Observer implementation satisfies both the metrics.Observer contract.
+	// Registry satisfies metrics.Observer.
 	var obs metrics.Observer = reg
 	obs.ObserveFailover("chat", "openai")
 	obs.ObserveFailover("chat", "openai")

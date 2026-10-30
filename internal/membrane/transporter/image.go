@@ -9,18 +9,17 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// ImageTransporter is the image-generation crossing. Like the other operation
-// capabilities it is a SEPARATE interface from
-// Transporter so adding an operation never forces chat-only implementations (or
-// test mocks) to change. It accepts ONLY a scrub.SanitizedRequest.
+// ImageTransporter crosses an image generation request. It is separate from
+// Transporter so that adding an operation does not affect chat-only
+// implementations or test mocks. It accepts only a scrub.SanitizedRequest.
 type ImageTransporter interface {
 	TransportImage(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalImage, error)
 }
 
-// TransportImage performs a non-streaming image-generation crossing with failover
-// across the pool, mirroring Transport. It dispatches via the optional
-// providers.ImageProvider capability; a target whose adapter lacks it yields
-// providers.ErrOperationUnsupported without failover.
+// TransportImage performs an image generation crossing with the same failover
+// as Transport. A target whose adapter does not implement
+// providers.ImageProvider yields providers.ErrOperationUnsupported without
+// failover.
 func (m *Membrane) TransportImage(ctx context.Context, sr scrub.SanitizedRequest) (types.CanonicalImage, error) {
 	capID := sr.Pathway()
 	tries := m.attempts(ctx, capID)

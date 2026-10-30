@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Release smoke test: a freshly built binary must start in managed mode against a
 # seeded embedded store, serve its operability endpoints, report READY, and shut
-# down gracefully. No real Provider is contacted — only the local operability
+# down gracefully. No real Provider is contacted; only the local operability
 # surface (/healthz, /readyz, /version) is probed.
 set -euo pipefail
 
@@ -48,7 +48,7 @@ cleanup() {
       sleep 0.2
     done
     if kill -0 "$PID" 2>/dev/null; then
-      echo "smoke: FAIL — Membrane did not shut down gracefully"
+      echo "smoke: FAIL: Membrane did not shut down gracefully"
       kill -KILL "$PID" 2>/dev/null || true
       exit 1
     fi
@@ -64,7 +64,7 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 if [[ -z "$ready" ]]; then
-  echo "smoke: FAIL — /healthz never responded"; cat /tmp/ip-smoke.log; exit 1
+  echo "smoke: FAIL: /healthz never responded"; cat /tmp/ip-smoke.log; exit 1
 fi
 echo "smoke: /healthz OK"
 
@@ -75,7 +75,7 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 if [[ -z "$ready" ]]; then
-  echo "smoke: FAIL — /readyz never reported ready (seed not applied?)"; cat /tmp/ip-smoke.log; exit 1
+  echo "smoke: FAIL: /readyz never reported ready (seed not applied?)"; cat /tmp/ip-smoke.log; exit 1
 fi
 echo "smoke: /readyz OK"
 

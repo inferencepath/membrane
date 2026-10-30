@@ -9,11 +9,10 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// ModerationsTransporter, TranscriptionTransporter, and SpeechTransporter are
-// operation crossings. Each is a SEPARATE
-// capability interface from Transporter so adding an operation never forces
-// chat-only implementations (or test mocks) to change. All accept ONLY a
-// scrub.SanitizedRequest.
+// ModerationsTransporter crosses a moderations request. Like the transcription
+// and speech interfaces below, it is separate from Transporter so that adding
+// an operation does not affect chat-only implementations or test mocks. All of
+// them accept only a scrub.SanitizedRequest.
 type ModerationsTransporter interface {
 	TransportModerations(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalModerations, error)
 }
@@ -151,9 +150,9 @@ func (m *Membrane) TransportTranscription(ctx context.Context, sr scrub.Sanitize
 	return types.CanonicalTranscription{}, lastErr
 }
 
-// TransportSpeech performs a streaming speech crossing. Mirroring TransportStream,
-// it fails over across the pool ONLY before the first chunk is relayed; once the
-// Head (or any audio) has been emitted, a mid-stream failure terminates cleanly.
+// TransportSpeech performs a streaming speech crossing. Like TransportStream, it
+// fails over across the pool only before the first chunk is relayed; once the
+// Head or any audio has been emitted, a mid-stream failure ends the stream.
 func (m *Membrane) TransportSpeech(ctx context.Context, sr scrub.SanitizedRequest, emit func(types.SpeechChunk) error) error {
 	capID := sr.Pathway()
 	tries := m.attempts(ctx, capID)

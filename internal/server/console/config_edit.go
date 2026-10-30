@@ -6,13 +6,11 @@ import (
 	"net/http"
 )
 
-// maxEditBytes caps the size of a config edit body (defensive; config files are
-// small).
+// maxEditBytes caps the size of a config edit body.
 const maxEditBytes = 1 << 20 // 1 MiB
 
-// editGuard enforces an available ConfigEditor and a known kind. It returns the
-// editor + kind and true when the request may proceed; otherwise it writes the
-// response and returns false.
+// editGuard checks for a ConfigEditor and a known kind. It returns false after
+// writing the error response when the request cannot proceed.
 func (c *Console) editGuard(w http.ResponseWriter, r *http.Request) (ConfigEditor, string, bool) {
 	if c.cfg.Editor == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -22,7 +20,7 @@ func (c *Console) editGuard(w http.ResponseWriter, r *http.Request) (ConfigEdito
 	}
 	kind := r.PathValue("kind")
 	if kind == "credentials" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "credentials editing is not available in this console edition"})
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "credentials editing is not available in this console"})
 		return nil, "", false
 	}
 	if !editorKnows(c.cfg.Editor, kind) {
@@ -57,8 +55,8 @@ func (c *Console) handleEditValidate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, editor.Validate(kind, raw))
 }
 
-// applyBody is the apply request payload: the new raw content plus the version
-// token the operator loaded (for optimistic concurrency).
+// applyBody is the apply request payload: the new raw content and the version
+// token the operator loaded.
 type applyBody struct {
 	Raw     string `json:"raw"`
 	Version string `json:"version"`
@@ -97,15 +95,15 @@ func (c *Console) handleEditFormValidate(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, editor.ValidateForm(kind, form))
 }
 
-// formApplyBody is the structured-apply payload: the form model plus the version
-// token the operator loaded (for optimistic concurrency).
+// formApplyBody is the form apply payload: the form model and the version
+// token the operator loaded.
 type formApplyBody struct {
 	Form    json.RawMessage `json:"form"`
 	Version string          `json:"version"`
 }
 
-// handleEditFormApply renders a structured form and runs the full validate →
-// version check → atomic write → reload pipeline.
+// handleEditFormApply renders a structured form, validates it, checks the
+// version, writes atomically, and reloads.
 func (c *Console) handleEditFormApply(w http.ResponseWriter, r *http.Request) {
 	editor, kind, ok := c.editGuard(w, r)
 	if !ok {
@@ -126,7 +124,7 @@ func (c *Console) handleEditFormApply(w http.ResponseWriter, r *http.Request) {
 }
 
 // readEditBody reads a size-capped request body. For validate the body is the
-// raw YAML; for apply it is a JSON object (still size-capped).
+// raw YAML; for apply it is a JSON object.
 func readEditBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	b, err := io.ReadAll(io.LimitReader(r.Body, maxEditBytes))
 	if err != nil {

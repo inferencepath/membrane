@@ -2,16 +2,11 @@ package store
 
 import "database/sql"
 
-// This file is the sealed-secret repository: the typed read/write path over the
-// `secrets` table (created in migration v2). The store persists ENCRYPTED bytes
-// only — ciphertext + nonce produced by internal/secrets — never plaintext. A
-// credential references a sealed value as `secret:<name>`; the Exterior resolves
-// it through internal/secrets, which is the sole reader of these rows.
+// The secrets table holds ciphertext and nonces produced by internal/secrets.
+// The store treats them as opaque bytes and never encrypts or decrypts.
 
-// SecretRow is one sealed secret as stored: the opaque ciphertext + nonce, the
-// master-key version that sealed it, a monotonically increasing value Version
-// bumped on each rotation, and the last-updated timestamp. It never carries
-// plaintext.
+// SecretRow is one sealed secret: the ciphertext, the nonce and key version
+// needed to open it, an increasing value version, and an update timestamp.
 type SecretRow struct {
 	Name       string
 	Ciphertext []byte
@@ -21,9 +16,7 @@ type SecretRow struct {
 	UpdatedAt  string
 }
 
-// SecretMeta is the value-free projection of a sealed secret: its name, key and
-// value versions, and when it was last updated. It is what the Console lists so
-// an operator can see what exists without ever reading a value.
+// SecretMeta is the listing view of a secret, without ciphertext or nonce.
 type SecretMeta struct {
 	Name       string
 	KeyVersion int
@@ -31,80 +24,66 @@ type SecretMeta struct {
 	UpdatedAt  string
 }
 
-// PutSecret creates or rotates the sealed secret named row.Name, returning the
-// resulting value version (1 on first insert, then bumped on each upsert). The
-// supplied row.Version is ignored — the store owns version assignment.
+// PutSecret upserts a sealed secret, bumps its version in the same
+// transaction, and returns the new version.
 func (s *Store) PutSecret(row SecretRow) (int, error) {
-	var v int
+	var version int
 	err := s.inTx(func(tx *sql.Tx) error {
-		n, err := putSecretTx(tx, row)
-		v = n
+		v, err := putSecretTx(tx, row)
+		version = v
 		return err
 	})
-	return v, err
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
 }
 
-// putSecretTx upserts a sealed secret within an existing transaction and returns
-// the resulting value version. A first insert starts at version 1; a conflicting
-// name updates the sealed bytes in place and bumps version by one, keeping a
-// single logical row per name. Shared by PutSecret and the atomic provider path.
+// putSecretTx is PutSecret within an existing transaction, so UpsertProvider
+// can write the secret and the provider together.
 func putSecretTx(tx *sql.Tx, row SecretRow) (int, error) {
+	var version int
+	if err := tx.QueryRow(
+		`SELECT COALESCE(MAX(version), 0) FROM secrets WHERE name = ?`, row.Name,
+	).Scan(&version); err != nil {
+		return 0, err
+	}
+	version++
 	if _, err := tx.Exec(
 		`INSERT INTO secrets (name, ciphertext, nonce, key_version, version, updated_at)
-		 VALUES (?, ?, ?, ?, 1, ?)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   ciphertext  = excluded.ciphertext,
 		   nonce       = excluded.nonce,
 		   key_version = excluded.key_version,
-		   updated_at  = excluded.updated_at,
-		   version     = secrets.version + 1`,
-		row.Name, row.Ciphertext, row.Nonce, row.KeyVersion, row.UpdatedAt,
-	); err != nil {
+		   version     = excluded.version,
+		   updated_at  = excluded.updated_at`,
+		row.Name, row.Ciphertext, row.Nonce, row.KeyVersion, version, row.UpdatedAt); err != nil {
 		return 0, err
 	}
-	var v int
-	if err := tx.QueryRow(`SELECT version FROM secrets WHERE name = ?`, row.Name).Scan(&v); err != nil {
-		return 0, err
-	}
-	return v, nil
+	return version, nil
 }
 
-// GetSecret returns the sealed secret named name. ok is false (with a nil error)
-// when no such secret exists.
+// GetSecret returns the sealed row for a name and whether it exists.
 func (s *Store) GetSecret(name string) (SecretRow, bool, error) {
-	row := SecretRow{Name: name}
+	r := SecretRow{Name: name}
 	err := s.db.QueryRow(
 		`SELECT ciphertext, nonce, key_version, version, updated_at
 		 FROM secrets WHERE name = ?`, name,
-	).Scan(&row.Ciphertext, &row.Nonce, &row.KeyVersion, &row.Version, &row.UpdatedAt)
+	).Scan(&r.Ciphertext, &r.Nonce, &r.KeyVersion, &r.Version, &r.UpdatedAt)
 	switch {
 	case err == sql.ErrNoRows:
 		return SecretRow{}, false, nil
 	case err != nil:
 		return SecretRow{}, false, err
 	}
-	return row, true, nil
+	return r, true, nil
 }
 
-// HasSecret reports whether a sealed secret exists under name.
-func (s *Store) HasSecret(name string) (bool, error) {
-	var one int
-	err := s.db.QueryRow(`SELECT 1 FROM secrets WHERE name = ?`, name).Scan(&one)
-	switch {
-	case err == sql.ErrNoRows:
-		return false, nil
-	case err != nil:
-		return false, err
-	}
-	return true, nil
-}
-
-// ListSecretMeta returns metadata for every sealed secret, ordered by name. It
-// never selects or returns the ciphertext/nonce, so no value can leak through it.
+// ListSecretMeta returns secret metadata ordered by name.
 func (s *Store) ListSecretMeta() ([]SecretMeta, error) {
 	rows, err := s.db.Query(
-		`SELECT name, key_version, version, updated_at FROM secrets ORDER BY name`,
-	)
+		`SELECT name, key_version, version, updated_at FROM secrets ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +100,7 @@ func (s *Store) ListSecretMeta() ([]SecretMeta, error) {
 	return out, rows.Err()
 }
 
-// DeleteSecret removes the sealed secret named name, reporting whether a row was
-// removed (false when nothing matched).
+// DeleteSecret removes a sealed secret, reporting whether a row was deleted.
 func (s *Store) DeleteSecret(name string) (bool, error) {
 	res, err := s.db.Exec(`DELETE FROM secrets WHERE name = ?`, name)
 	if err != nil {
@@ -130,6 +108,15 @@ func (s *Store) DeleteSecret(name string) (bool, error) {
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// HasSecret reports whether a sealed secret exists under name.
+func (s *Store) HasSecret(name string) (bool, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM secrets WHERE name = ?`, name).Scan(&n); err != nil {
 		return false, err
 	}
 	return n > 0, nil

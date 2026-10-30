@@ -2,9 +2,8 @@ package console
 
 import "net/http"
 
-// configGuard enforces GET + an available ConfigSource. It returns the source
-// and true when the request may proceed; otherwise it writes the response and
-// returns false.
+// configGuard requires GET and a ConfigSource. It returns false after writing
+// the error response when the request cannot proceed.
 func (c *Console) configGuard(w http.ResponseWriter, r *http.Request) (ConfigSource, bool) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "only GET is supported"})
@@ -43,9 +42,9 @@ func (c *Console) handleConfigCredentials(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	// Community UI keeps credential-reference editing off the console surface.
-	// Keep this endpoint explicit (404) rather than falling through to static.
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "credentials view is not available in this console edition"})
+	// Credential references are not exposed by this console. Return an explicit
+	// 404 rather than falling through to the static UI.
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "credentials view is not available in this console"})
 }
 
 func (c *Console) handleConfigCallers(w http.ResponseWriter, r *http.Request) {
@@ -74,9 +73,8 @@ func (c *Console) handleConfigPermeability(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, v)
 }
 
-// configError reports a config read failure. The ConfigSource errors are
-// parse/validation errors from the daemon's own loaders — already secret-free —
-// so they are surfaced to help the operator fix the file.
+// configError reports a config read failure. ConfigSource errors come from the
+// daemon's loaders and contain no secrets, so they are shown to the operator.
 func (c *Console) configError(w http.ResponseWriter, err error) {
 	c.cfg.Logger.Warn("console config read failed", "error", err.Error())
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

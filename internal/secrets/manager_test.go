@@ -107,8 +107,7 @@ func TestManagerListIsValueFree(t *testing.T) {
 	if len(metas) != 2 {
 		t.Fatalf("len(metas) = %d, want 2", len(metas))
 	}
-	// Metadata must be ordered and carry no value-bearing fields (compile-time:
-	// SecretMeta has no ciphertext/value). Sanity-check names/timestamps only.
+	// SecretMeta has no value fields, so only order and timestamps need checking.
 	if metas[0].Name != "a" || metas[1].Name != "b" {
 		t.Fatalf("unexpected order: %+v", metas)
 	}

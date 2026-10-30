@@ -1,11 +1,8 @@
 # Keep the Membrane release image clean and the build context small.
-# The marketing/docs site is NOT part of the Membrane release.
-website/
-
 # Local build artifacts (never needed in the image).
 bin/
 dist/
-# ...but the embedded Membrane Console UI (go:embed) MUST stay in the build
+# The embedded Membrane Console UI (go:embed) has to stay in the build
 # context, even though it lives under a dist/ directory.
 !internal/server/console/webui/dist
 !internal/server/console/webui/dist/**

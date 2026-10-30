@@ -9,20 +9,17 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// RerankTransporter is the rerank-operation crossing. Like EmbeddingsTransporter
-// it is a SEPARATE capability interface from
-// Transporter so that adding an operation never forces chat-only Transporter
-// implementations (or test mocks) to change. It accepts ONLY a
-// scrub.SanitizedRequest, so a non-sanitized request cannot be transported.
+// RerankTransporter crosses a rerank request. It is separate from Transporter
+// so that adding an operation does not affect chat-only implementations or
+// test mocks. It accepts only a scrub.SanitizedRequest.
 type RerankTransporter interface {
 	TransportRerank(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalRerank, error)
 }
 
-// TransportRerank performs a non-streaming rerank crossing with failover across
-// the pool, mirroring Transport. It dispatches to each target's adapter via the
-// optional providers.RerankProvider capability; a target whose adapter lacks that
-// capability yields providers.ErrOperationUnsupported without failover (wiring
-// such a target is already rejected fail-closed at config assembly).
+// TransportRerank performs a rerank crossing with the same failover as
+// Transport. A target whose adapter does not implement providers.RerankProvider
+// yields providers.ErrOperationUnsupported without failover; config assembly
+// already rejects such targets.
 func (m *Membrane) TransportRerank(ctx context.Context, sr scrub.SanitizedRequest) (types.CanonicalRerank, error) {
 	capID := sr.Pathway()
 	tries := m.attempts(ctx, capID)
@@ -41,8 +38,8 @@ func (m *Membrane) TransportRerank(ctx context.Context, sr scrub.SanitizedReques
 
 		rp, ok := t.adapter.(providers.RerankProvider)
 		if !ok {
-			// Adapter does not support rerank: a request-level configuration fault,
-			// not a transient target failure. Do not fail over or trip the breaker.
+			// A configuration fault rather than a transient failure, so
+			// neither fail over nor trip the breaker.
 			return types.CanonicalRerank{}, providers.ErrOperationUnsupported
 		}
 

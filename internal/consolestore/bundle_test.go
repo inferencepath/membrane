@@ -9,12 +9,11 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// withValidator wires the real cross-kind validator (app.ValidateSpecs) so the
-// bundle path is exercised exactly as in production.
+// newBundleAdapter returns an Adapter using the real cross-kind validator,
+// app.ValidateSpecs.
 func newBundleAdapter(t *testing.T, calls *int, outcome consolestore.ReloadOutcome) *consolestore.Adapter {
 	t.Helper()
-	// The cross-kind validator resolves credentials; the seeded config references
-	// env:TEST_STORE_KEY, so it must resolve for a valid bundle to pass.
+	// The validator resolves credentials, and the seed uses env:TEST_STORE_KEY.
 	t.Setenv("TEST_STORE_KEY", "sk-test-resolves")
 	return consolestore.New(newSeeded(t), testCfg(), recordReload(outcome, calls),
 		consolestore.WithValidator(app.ValidateSpecs))
@@ -30,7 +29,7 @@ func TestExportBundleIsReferenceOnly(t *testing.T) {
 	if err != nil || f.Version == "" {
 		t.Fatalf("export = %+v (err %v)", f, err)
 	}
-	// Secret VALUE must never appear; only the reference and the hash.
+	// Only the reference and the hash may appear, not the secret value.
 	if strings.Contains(f.Raw, "sk-should-never-appear") {
 		t.Fatalf("exported bundle leaked a secret value:\n%s", f.Raw)
 	}
@@ -45,7 +44,7 @@ func TestDiffBundleUnchangedThenChanged(t *testing.T) {
 	a := newBundleAdapter(t, new(int), consolestore.ReloadOutcome{Applied: true})
 	f, _ := a.ExportBundle()
 
-	// Exported live config diffed against itself → valid, no change.
+	// The live config diffed against itself is valid and unchanged.
 	diff, err := a.DiffBundle([]byte(f.Raw))
 	if err != nil {
 		t.Fatalf("diff: %v", err)
@@ -54,7 +53,7 @@ func TestDiffBundleUnchangedThenChanged(t *testing.T) {
 		t.Fatalf("expected valid/no-change, got %+v", diff)
 	}
 
-	// Change a model (now owned by the provider) → providers kind should report changed.
+	// Models belong to providers, so changing one marks the providers kind changed.
 	changed := strings.ReplaceAll(f.Raw, "gpt-4o-mini", "gpt-4o")
 	diff, err = a.DiffBundle([]byte(changed))
 	if err != nil {
@@ -76,7 +75,7 @@ func TestDiffBundleUnchangedThenChanged(t *testing.T) {
 
 func TestDiffBundleInvalid(t *testing.T) {
 	a := newBundleAdapter(t, new(int), consolestore.ReloadOutcome{Applied: true})
-	// Dangling keyring ref: parses per-kind but fails cross-kind validation.
+	// A dangling keyring ref parses per kind but fails cross-kind validation.
 	f, _ := a.ExportBundle()
 	bad := strings.Replace(f.Raw, "provider: main", "provider: ghost", 1)
 	diff, err := a.DiffBundle([]byte(bad))
@@ -98,7 +97,7 @@ func TestApplyBundleWritesAllKindsAndReloads(t *testing.T) {
 	if !res.Applied || calls != 1 || res.Version == "" {
 		t.Fatalf("apply bundle = %+v calls=%d", res, calls)
 	}
-	// Model is owned by the provider now; re-export and confirm it persisted.
+	// Re-export and confirm the provider model was stored.
 	f2, _ := a.ExportBundle()
 	if !strings.Contains(f2.Raw, "default_model: gpt-4o\n") {
 		t.Fatalf("expected persisted provider default_model gpt-4o, got:\n%s", f2.Raw)
@@ -143,13 +142,13 @@ func TestApplyBundleParseErrorRejected(t *testing.T) {
 	}
 }
 
-// Without an injected validator, a dangling ref still parses per-kind but no
-// cross-kind check runs — proving WithValidator is what adds that gate.
+// TestApplyBundleNoValidatorSkipsCrossKind checks that without WithValidator
+// no cross-kind check runs.
 func TestApplyBundleNoValidatorSkipsCrossKind(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
 	f, _ := a.ExportBundle()
-	// Point the provider at an unresolvable secret: it parses and satisfies the
-	// foreign keys, but would fail cross-kind assembly — which no validator runs.
+	// An unresolvable secret parses and satisfies the foreign keys; only the
+	// cross-kind validator would reject it.
 	bad := strings.Replace(f.Raw, "env:TEST_STORE_KEY", "env:DEFINITELY_MISSING", 1)
 	res := a.ApplyBundle([]byte(bad), f.Version)
 	if !res.Applied {

@@ -1,9 +1,9 @@
-// Package audit holds Interior-only usage records. It shares no types or
-// references with the Exterior, so audit data has no path across the Membrane:
-// a Record carries only Interior facts (who called, which Pathway, when, how
-// long, the coarse outcome, and token counts) and never prompt/response content,
-// a secret, the Reveal flag, or any Exterior topology (endpoint, region,
-// deployment, ARN, keyring_ref, or Provider family).
+// Package audit holds Interior-only usage records. It shares no types with the
+// Exterior, so audit data has no path across the Membrane. A Record carries
+// Interior facts only: who called, which Pathway, when, how long, the coarse
+// outcome, and token counts. It never holds prompt or response content,
+// secrets, the Reveal flag, or Exterior topology such as endpoints, regions,
+// deployments, ARNs, keyring_ref values, or the Provider family.
 package audit
 
 import (
@@ -18,9 +18,8 @@ import (
 // SchemaVersion is the current audit record schema version.
 const SchemaVersion = 1
 
-// Record is an Interior-only usage record, emitted once per served request. Its
-// JSON encoding conforms to audit-record-v1.json. It never contains payload
-// content or secrets, and never crosses the Membrane.
+// Record is an Interior-only usage record, emitted once per served request. It
+// never contains payload content or secrets and never crosses the Membrane.
 type Record struct {
 	SchemaVersion    int             `json:"schema_version"`
 	Timestamp        time.Time       `json:"timestamp"`
@@ -32,16 +31,16 @@ type Record struct {
 	CompletionTokens int             `json:"completion_tokens"`
 	TotalTokens      int             `json:"total_tokens"`
 	Stream           bool            `json:"stream"`
-	// Tool-usage counts: content-free tallies only — never tool
-	// names-as-content, arguments, or results. Omitted when zero so non-tool
-	// records serialize exactly as before.
+	// Tool-usage counts. These are plain tallies; tool names, arguments, and
+	// results are never recorded. They are omitted when zero.
 	ToolsOffered      int `json:"tools_offered,omitempty"`
 	ToolCallsReturned int `json:"tool_calls_returned,omitempty"`
 	ToolTurnsSent     int `json:"tool_turns_sent,omitempty"`
 }
 
-// Sink receives audit Records. Implementations are Interior-only and best-effort:
-// Write MUST NOT block or fail the request that produced the record.
+// Sink receives audit Records. Implementations are Interior-only and
+// best-effort: Write must not block or fail the request that produced the
+// record.
 type Sink interface {
 	Write(Record)
 }
@@ -53,10 +52,10 @@ type Discard struct{}
 func (Discard) Write(Record) {}
 
 // JSONLines is a Sink that appends one JSON object per line to an io.Writer
-// (a file or stdout). Writes are serialized and best-effort: a marshal or write
-// error is reported to onErr (if set) and never propagated to the request. The
-// error is a local I/O/encoding error and carries no secret, so logging it is
-// safe.
+// such as a file or stdout. Writes are serialized and best-effort: a marshal or
+// write error goes to onErr, if set, and is never returned to the request. Such
+// errors are local I/O or encoding failures with no secret in them, so they are
+// safe to log.
 type JSONLines struct {
 	mu    sync.Mutex
 	w     io.Writer

@@ -1,14 +1,9 @@
-// Package consoleaudit adapts the Interior-only usage audit log (JSON Lines)
-// into the Membrane Console's secret-free UsageRecord view. Like consoleview and
-// consoleedit it is an app-layer adapter: it may import the Interior audit
-// package, while the console package depends only on the console.AuditSource
-// port — so the console itself never imports Interior code.
+// Package consoleaudit implements console.AuditSource over the Interior-only
+// usage audit log (JSON Lines), so the console package never imports Interior
+// code.
 //
-// It reads the configured audit file on demand and returns the most recent
-// records. The mapping drops nothing sensitive because the Interior audit record
-// already carries no content, secret, Reveal flag, or Exterior topology; it
-// exposes only Interior usage facts (caller id, pathway, outcome, duration,
-// token counts, stream).
+// Audit records carry no content, secret, Reveal flag, or Exterior topology,
+// only usage facts such as caller ID, pathway, outcome, and token counts.
 package consoleaudit
 
 import (
@@ -34,7 +29,7 @@ func New(path string) *Source {
 }
 
 // Recent returns up to limit most-recent usage records, newest first. A missing
-// file yields an empty result (auditing may simply not have written yet).
+// file yields an empty result, since auditing may not have written yet.
 func (s *Source) Recent(limit int) ([]console.UsageRecord, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -48,8 +43,7 @@ func (s *Source) Recent(limit int) ([]console.UsageRecord, error) {
 	}
 	defer f.Close()
 
-	// Keep only the last `limit` parsed records in a ring to bound memory on
-	// large logs.
+	// Keep only the last limit records to bound memory on large logs.
 	ring := make([]console.UsageRecord, 0, limit)
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)

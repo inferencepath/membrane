@@ -1,12 +1,11 @@
 // Package authorize enforces per-Caller access control on the Interior, between
-// Admit (authentication) and Resolve (routing). It is deny-by-default: a Caller
-// is permitted a Pathway only if that Pathway appears on the Caller's
-// allowlist. An unauthorized request is rejected before any SanitizedRequest is
-// built, so it never reaches the Membrane and never contacts a Provider.
+// Admit (authentication) and Resolve (routing). Access is denied by default: a
+// Caller may use a Pathway only if it is on the Caller's allowlist. An
+// unauthorized request is rejected before any SanitizedRequest is built, so it
+// never reaches the Membrane or a Provider.
 //
-// Denials are intentionally generic (ErrForbidden) and never reveal whether a
-// Pathway exists, so an unauthorized Caller cannot enumerate the Pathway
-// namespace.
+// Every denial returns the same ErrForbidden and does not say whether the
+// Pathway exists, so a Caller cannot enumerate Pathways.
 package authorize
 
 import (
@@ -16,16 +15,16 @@ import (
 )
 
 // ErrForbidden is returned when a Caller is not authorized for a Pathway. It
-// is deliberately generic (no existence oracle, no detail).
+// carries no detail.
 var ErrForbidden = errors.New("authorize: forbidden")
 
-// Policy reports whether a CallerID is authorized for a Pathway. It is
-// implemented by the Caller store (deny-by-default).
+// Policy reports whether a CallerID is authorized for a Pathway. The Caller
+// store implements it.
 type Policy interface {
 	Allows(callerID string, pathway types.PathwayID) bool
 }
 
-// Authorizer applies a Policy as a deny-by-default access-control gate.
+// Authorizer applies a Policy, denying anything it does not allow.
 type Authorizer struct {
 	policy Policy
 }
@@ -36,9 +35,8 @@ func New(policy Policy) *Authorizer {
 	return &Authorizer{policy: policy}
 }
 
-// Authorize permits the Caller to use the Pathway, or returns ErrForbidden.
-// Deny-by-default: a nil Authorizer or Policy, or a Caller without the Pathway
-// on its allowlist, is denied.
+// Authorize returns nil if the Caller may use the Pathway and ErrForbidden
+// otherwise. A nil Authorizer or Policy denies every request.
 func (a *Authorizer) Authorize(caller types.Caller, pathway types.PathwayID) error {
 	if a == nil || a.policy == nil {
 		return ErrForbidden

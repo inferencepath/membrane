@@ -1,11 +1,10 @@
-// Package embeddings implements the logical /v1/embeddings handler: Admit →
-// Authorize → Resolve (operation-gated) → Scrub → Transporter (+ Egress
-// Identity) → inward Scrub. Like the chat handler, no endpoint here accepts or
-// emits provider endpoints, credentials, or caller identity on the egress side.
+// Package embeddings implements the logical /v1/embeddings handler: Admit,
+// Authorize, Resolve, Scrub, Transporter with Egress Identity, then the inward
+// Scrub. No provider endpoint, credential, or caller identity crosses to the
+// egress side.
 //
-// It reuses the chat Snapshot (the per-request, immutable config bundle) since
-// that bundle is operation-agnostic; only the request/response shape and the
-// embeddings-specific transport capability differ.
+// It uses the chat Snapshot, which is operation-agnostic; only the request and
+// response shapes and the transport capability differ.
 package embeddings
 
 import (
@@ -29,8 +28,7 @@ import (
 // Route is the path this handler serves.
 const Route = "/v1/embeddings"
 
-// Stable, machine-handleable error codes, mirroring the chat handler's
-// provider-neutral error contract.
+// Stable error codes, matching the chat handler's provider-neutral errors.
 const (
 	codeMethodNotAllowed    = "method_not_allowed"
 	codeUnauthorized        = "unauthorized"
@@ -56,7 +54,7 @@ type Handler struct {
 	now     func() time.Time
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink. When unset, audit
@@ -69,7 +67,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -92,8 +90,8 @@ func NewReloadable(current func() *chat.Snapshot, logger *slog.Logger, rec metri
 }
 
 // observe records one served request to the identity-free metrics and the
-// Interior-only audit Sink. Embeddings reuse the Pathway-keyed chat recorder
-// (stream=false); completion tokens are always 0 for embeddings.
+// Interior-only audit Sink, using the Pathway-keyed chat recorder. Embeddings
+// have no completion tokens.
 func (h *Handler) observe(callerID string, capID types.PathwayID, outcome metrics.Outcome, latency time.Duration, prompt, total int) {
 	h.metrics.RecordChat(string(capID), false, outcome, latency, prompt, 0, total)
 	h.audit.Write(audit.Record{
@@ -146,7 +144,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	capID := types.PathwayID(req.Pathway)
 
-	// Authorization (deny-by-default) runs after Admit and before Resolve/Scrub.
+	// Deny-by-default authorization runs after Admit and before Resolve.
 	if snap.Authorizer != nil {
 		authErr := snap.Authorizer.Authorize(caller, capID)
 		if az, ok := h.metrics.(metrics.AuthzObserver); ok {
@@ -163,17 +161,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Route-dispatch guard: /v1/embeddings serves only Pathways whose
-	// operation is `embeddings`. Any other operation (including the default chat)
-	// is reported with the same generic unresolved_pathway error — no operation or
-	// Pathway enumeration oracle.
+	// This route serves only embeddings Pathways. Any other operation gets the
+	// generic unresolved_pathway error so Pathways cannot be enumerated.
 	if op, ok := snap.Resolver.Operation(capID); !ok || op != types.OperationEmbeddings {
 		writeError(w, http.StatusBadRequest, codeUnresolvedPathway, "no binding for the requested pathway")
 		return
 	}
 
-	// Resolve the caller cascade into an ordered routing plan (Interior-only;
-	// validated against the Pathway allowlist; never enters the payload).
+	// The routing plan is validated against the Pathway allowlist and stays out
+	// of the payload.
 	plan, err := snap.Resolver.Plan(capID, req.Targets)
 	if err != nil {
 		if errors.Is(err, resolve.ErrTargetNotAllowed) {
@@ -194,9 +190,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The embeddings crossing is an optional Transporter capability. A Transport
-	// that does not implement it means the daemon is not wired for embeddings;
-	// fail closed rather than silently degrade.
+	// Embeddings are an optional Transporter capability; fail closed if the
+	// Transport lacks it.
 	et, ok := snap.Transport.(transporter.EmbeddingsTransporter)
 	if !ok {
 		writeError(w, http.StatusServiceUnavailable, codeUnavailable, "embeddings are not available")
@@ -260,8 +255,8 @@ func planTiers(plan []resolve.PlanTarget) []transporter.PlanTier {
 }
 
 // buildCanonical assembles the provider-agnostic CanonicalRequest from the
-// embeddings request. Only the outbound-permeable fields are carried; the Scrub
-// then rebuilds the egress payload from the Pathway's outbound allowlist.
+// embeddings request. The Scrub then rebuilds the egress payload from the
+// Pathway's outbound allowlist.
 func buildCanonical(capID types.PathwayID, req types.EmbeddingsRequest, caller types.Caller) types.CanonicalRequest {
 	payload := map[string]any{"input": req.Input}
 	if req.EncodingFormat != "" {
@@ -290,7 +285,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

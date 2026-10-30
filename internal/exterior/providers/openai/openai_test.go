@@ -54,7 +54,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 
-	// Outbound: neutral tools mapped to the OpenAI function schema.
+	// Neutral tools map to the OpenAI function schema.
 	tools, _ := gotBody["tools"].([]any)
 	if len(tools) != 1 {
 		t.Fatalf("tools = %v", gotBody["tools"])
@@ -70,7 +70,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Errorf("tool_choice = %v", gotBody["tool_choice"])
 	}
 
-	// Inbound: response tool_calls normalized to canonical.
+	// Response tool_calls map to canonical tool calls.
 	if len(resp.Message.ToolCalls) != 1 {
 		t.Fatalf("tool_calls = %+v", resp.Message.ToolCalls)
 	}
@@ -161,8 +161,8 @@ func TestCompleteBaseURLWithV1Suffix(t *testing.T) {
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", Model: "m", FinishReason: "stop"})
 	defer fake.Close()
 
-	// Operators commonly paste endpoint values ending with /v1. The adapter
-	// must not append another /v1 in that case.
+	// Endpoints are often configured with a trailing /v1, which must not be
+	// doubled.
 	a := openai.New("openai", fake.URL()+"/v1", 0)
 	if _, err := a.Complete(context.Background(), req(), providers.EgressIdentity{Secret: "tok"}); err != nil {
 		t.Fatalf("Complete: %v", err)

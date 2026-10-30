@@ -48,7 +48,8 @@ func TestPlanIgnoresTargetsWhenCascadeDisallowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// cascade_allowed=false → targets have no meaning; default provider/model.
+	// With cascade_allowed false the targets are ignored and the default
+	// provider and model are used.
 	if len(plan) != 1 || plan[0].Provider != "openai-main" || plan[0].Model != "gpt-4o-mini" {
 		t.Fatalf("plan = %+v", plan)
 	}
@@ -59,7 +60,7 @@ func TestPlanOrdersByCascadeAndIsSticky(t *testing.T) {
 	plan, err := r.Plan("chat", []types.ChatTarget{
 		{Provider: "bedrock-main", Model: "claude-3-5-sonnet", Cascade: 3},
 		{Provider: "openai-main", Model: "gpt-4o", Cascade: 1},
-		{Provider: "openai-main", Cascade: 2}, // model omitted → provider default
+		{Provider: "openai-main", Cascade: 2}, // model omitted, so the provider default applies
 	})
 	if err != nil {
 		t.Fatal(err)

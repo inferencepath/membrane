@@ -1,11 +1,10 @@
-// Package gemini implements a Google Gemini Provider adapter targeting the
-// AI Studio generateContent API. Chat maps the canonical conversation to Gemini's
-// native `contents`/`systemInstruction`/`generationConfig` schema and its native
-// function calling, so switching models is only a model-id change. The adapter
-// builds its request ONLY from a neutral providers.Request plus the injected
-// EgressIdentity (the AI Studio API key) — it has no access to Caller identity,
-// the Caller Key, or the Reveal flag. The key is attached as the x-goog-api-key
-// header.
+// Package gemini implements a Provider adapter for the Google Gemini
+// generateContent API. Chat maps the canonical conversation to Gemini's
+// contents, systemInstruction, and generationConfig fields and to its function
+// calling. Requests are built only from a providers.Request and the
+// EgressIdentity; the AI Studio API key is sent as the x-goog-api-key header.
+// The adapter has no access to Caller identity, the Caller Key, or the Reveal
+// flag.
 package gemini
 
 import (
@@ -27,37 +26,36 @@ import (
 const (
 	// defaultBaseURL is the public AI Studio endpoint.
 	defaultBaseURL = "https://generativelanguage.googleapis.com"
-	// apiVersion pins the Gemini REST API version. Not caller identity.
+	// apiVersion pins the Gemini REST API version.
 	apiVersion = "v1beta"
 	// defaultIdleTimeout bounds inactivity on a streaming response when unset.
 	defaultIdleTimeout = 30 * time.Second
 )
 
-// Adapter is a Google Gemini Provider adapter. It serves two deployment surfaces
-// that differ only in endpoint shape and auth: AI Studio (API-key, the default)
-// and Vertex AI (GCP project + location, OAuth bearer from an ambient source).
+// Adapter is a Google Gemini Provider adapter. It supports AI Studio (API key,
+// the default) and Vertex AI (GCP project and location, OAuth bearer token),
+// which differ only in endpoint and auth.
 type Adapter struct {
 	id          types.ProviderID
 	baseURL     string
 	idleTimeout time.Duration
 	client      *http.Client
 
-	// vertex selects the Vertex AI endpoint shape (project/location path). When
-	// false the adapter targets the AI Studio endpoint.
+	// vertex selects the Vertex AI endpoint with a project and location path.
+	// Otherwise the adapter targets AI Studio.
 	vertex   bool
 	project  string
 	location string
-	// tokenSource, when set, mints a short-lived OAuth bearer per request (the
-	// Vertex / ambient-GCP path) instead of attaching the static x-goog-api-key.
+	// tokenSource, when set, supplies an OAuth bearer token per request in place
+	// of the x-goog-api-key header.
 	tokenSource func(context.Context) (string, error)
 }
 
 // Option configures a Gemini Adapter.
 type Option func(*Adapter)
 
-// WithVertex selects the Vertex AI surface for the given GCP project + location.
-// The endpoint becomes the regional aiplatform host with the project/location
-// path; neither value is ever disclosed to a Caller.
+// WithVertex selects Vertex AI for the given GCP project and location, using
+// the regional aiplatform host. Neither value is disclosed to a Caller.
 func WithVertex(project, location string) Option {
 	return func(a *Adapter) {
 		a.vertex = true
@@ -66,17 +64,17 @@ func WithVertex(project, location string) Option {
 	}
 }
 
-// WithTokenSource attaches an OAuth bearer source (ADC / service account),
-// minted per request so credentials auto-refresh. When set it replaces the
-// static x-goog-api-key auth. This is the GCP analog of Bedrock's ambient modes.
+// WithTokenSource sets an OAuth bearer token source, such as Application
+// Default Credentials, called per request so tokens can refresh. It replaces
+// x-goog-api-key auth.
 func WithTokenSource(src func(context.Context) (string, error)) Option {
 	return func(a *Adapter) { a.tokenSource = src }
 }
 
-// New returns a Gemini adapter. An empty baseURL defaults to the public AI Studio
-// endpoint (or, under WithVertex, the regional Vertex host). idleTimeout bounds
-// inactivity on streaming responses (defaulted if <= 0). The reported ID is
-// "gemini", which is what the Membrane may surface to the Caller on Reveal.
+// New returns a Gemini adapter. An empty baseURL selects the public AI Studio
+// endpoint, or the regional Vertex host with WithVertex. idleTimeout bounds
+// inactivity on streaming responses; a value <= 0 selects the default. The
+// reported ID is "gemini".
 func New(baseURL string, idleTimeout time.Duration, opts ...Option) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
@@ -96,9 +94,8 @@ func New(baseURL string, idleTimeout time.Duration, opts ...Option) *Adapter {
 // ID implements providers.Provider.
 func (a *Adapter) ID() types.ProviderID { return a.id }
 
-// base returns the endpoint host. An explicit baseURL always wins (tests /
-// private endpoints); otherwise the AI Studio public host or the regional Vertex
-// host is used.
+// base returns the endpoint host. A configured baseURL takes precedence over
+// the AI Studio or regional Vertex host.
 func (a *Adapter) base() string {
 	if a.baseURL != "" {
 		return a.baseURL
@@ -124,10 +121,10 @@ func (a *Adapter) generateURL(model, method, query string) string {
 	return u
 }
 
-// buildBody maps the neutral chat payload to a Gemini generateContent request:
-// system-role turns are lifted into top-level systemInstruction, assistant
-// tool_calls become functionCall parts, tool-role results become functionResponse
-// parts, and the standard params map into generationConfig.
+// buildBody maps the neutral chat payload to a Gemini generateContent request.
+// System turns move to systemInstruction, assistant tool_calls become
+// functionCall parts, tool results become functionResponse parts, and sampling
+// parameters map into generationConfig.
 func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 	system, contents := geminiContents(req.Payload["messages"])
 
@@ -162,11 +159,10 @@ func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-// geminiContents converts the neutral messages array into Gemini's contents
-// shape plus a lifted systemInstruction string. Canonical "assistant" maps to
-// Gemini's "model" role; a neutral tool-result turn (role "tool") becomes a user
-// turn with a functionResponse part; assistant tool_calls become functionCall
-// parts. A system-free, tool-free conversation maps one text part per turn.
+// geminiContents converts the neutral messages array into Gemini contents and a
+// system instruction string. "assistant" maps to Gemini's "model" role, a
+// tool-result turn (role "tool") becomes a user turn with a functionResponse
+// part, and assistant tool_calls become functionCall parts.
 func geminiContents(raw any) (system string, contents []any) {
 	arr, ok := raw.([]any)
 	if !ok {
@@ -254,8 +250,9 @@ func geminiTools(raw any) any {
 }
 
 // toolConfig maps the neutral (OpenAI-style) tool_choice directive into the
-// Gemini functionCallingConfig. "none"→NONE, "auto"→AUTO, "required"/"any"→ANY,
-// {function:{name}}→ANY + allowedFunctionNames. nil yields the model default.
+// Gemini functionCallingConfig. "none", "auto", and "required" or "any" map to
+// NONE, AUTO, and ANY; a named function maps to ANY with allowedFunctionNames.
+// A nil result leaves the model default.
 func toolConfig(raw any) map[string]any {
 	if raw == nil {
 		return nil
@@ -303,7 +300,7 @@ func toolConfig(raw any) map[string]any {
 }
 
 // toolResponse renders tool-role result content as the Struct Gemini expects for
-// a functionResponse: a JSON object is used as-is; anything else is wrapped.
+// a functionResponse. A JSON object is used as-is; anything else is wrapped.
 func toolResponse(content string) map[string]any {
 	trimmed := strings.TrimSpace(content)
 	if strings.HasPrefix(trimmed, "{") {
@@ -384,9 +381,9 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, urlStr string, body []byte
 	if err != nil {
 		return nil, err
 	}
-	// Only the Egress Identity and content negotiation headers are attached. No
-	// caller/org identity, Caller Key, forwarding, or correlation headers. Vertex
-	// mints an ambient OAuth bearer; AI Studio uses the static api key.
+	// Only the Egress Identity and content negotiation headers are sent: no
+	// Caller identity, Caller Key, forwarding, or correlation headers. Vertex uses
+	// an OAuth bearer token; AI Studio uses the API key.
 	if a.tokenSource != nil {
 		token, terr := a.tokenSource(ctx)
 		if terr != nil {
@@ -524,10 +521,9 @@ type streamResponse struct {
 	} `json:"candidates"`
 }
 
-// Stream implements providers.Provider for the streaming (SSE) path. It maps each
-// generateContent chunk to canonical chunks: text parts → Delta text, a
-// functionCall part → one tool-call delta carrying the full arguments (Gemini
-// does not fragment tool arguments), and the terminal finishReason → FinishReason.
+// Stream implements providers.Provider for the streaming (SSE) path. Text parts
+// become Delta, each functionCall part becomes one tool-call delta with the full
+// arguments (Gemini does not split them), and finishReason sets FinishReason.
 func (a *Adapter) Stream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.StreamChunk) error) error {
 	body, err := a.buildBody(req)
 	if err != nil {

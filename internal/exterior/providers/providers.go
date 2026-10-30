@@ -1,11 +1,10 @@
 // Package providers defines the Exterior Provider port and the neutral types
 // used to call a Provider across the Membrane. Concrete adapters live in
-// subpackages (e.g. openai). This package must not import Interior packages.
+// subpackages. This package must not import Interior packages.
 //
-// A Provider is driven only by a Request (the allowlisted, resolved egress
-// payload built from a SanitizedRequest by the Transporter) plus an
-// EgressIdentity. It never receives Caller context, the Caller Key, or the
-// Reveal flag.
+// A Provider sees only a Request (the allowlisted egress payload the
+// Transporter builds from a SanitizedRequest) and an EgressIdentity. It never
+// receives Caller context, the Caller Key, or the Reveal flag.
 package providers
 
 import (
@@ -16,23 +15,23 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// Request is the neutral, egress-ready request handed to a Provider adapter. It
-// is built by the Transporter from a SanitizedRequest and therefore contains no
-// caller/org identity or control fields.
+// Request is the neutral request handed to a Provider adapter. The Transporter
+// builds it from a SanitizedRequest, so it carries no Caller identity or
+// control fields.
 type Request struct {
 	// Model is the resolved egress model.
 	Model string
-	// Payload is the allowlisted logical payload (messages + permitted params).
+	// Payload is the allowlisted payload: messages plus permitted parameters.
 	Payload map[string]any
-	// Stream indicates a streaming response is desired.
+	// Stream requests a streaming response.
 	Stream bool
 }
 
-// EgressIdentity is the opaque Provider credential attached at/after the
-// Membrane. For OpenAI-compatible Providers it is a bearer token. It MUST NEVER
-// be logged or surfaced to a Caller.
+// EgressIdentity is the opaque Provider credential attached at the Membrane.
+// For OpenAI-compatible Providers it is a bearer token. It must never be
+// logged or shown to a Caller.
 type EgressIdentity struct {
-	// Secret is the opaque credential material (e.g. an API key / bearer token).
+	// Secret is the credential material, such as an API key.
 	Secret string
 }
 
@@ -50,21 +49,19 @@ type Provider interface {
 // ErrUpstreamTimeout indicates the Provider did not respond within the deadline.
 var ErrUpstreamTimeout = errors.New("providers: upstream timeout")
 
-// ErrStreamingUnsupported indicates the Provider adapter does not implement the
-// streaming path. Adapters that lack it
-// fail closed rather than silently degrading.
+// ErrStreamingUnsupported indicates the Provider adapter has no streaming
+// path. Such adapters fail closed instead of falling back to non-streaming.
 var ErrStreamingUnsupported = errors.New("providers: streaming not supported")
 
-// ErrToolCallingUnsupported indicates a request carried tool definitions/calls
-// but the resolved Provider adapter does not implement tool calling. It is a
-// request-level (not transient) failure: the handler maps it to a 400 and the
+// ErrToolCallingUnsupported indicates a request carried tool definitions or
+// calls but the resolved adapter does not support tool calling. It is a
+// request error, not a transient one: the handler maps it to 400 and the
 // Transporter does not fail over on it.
 var ErrToolCallingUnsupported = errors.New("providers: tool calling not supported")
 
-// RequestHasTools reports whether a neutral allowlisted payload carries tool
-// definitions or tool-bearing messages (assistant tool_calls or a tool-result
-// turn). Adapters that do not implement tool calling use it to fail closed
-// before any upstream contact.
+// RequestHasTools reports whether payload carries tool definitions or
+// tool-bearing messages (assistant tool_calls or a tool-result turn). Adapters
+// without tool support use it to fail closed before contacting upstream.
 func RequestHasTools(payload map[string]any) bool {
 	if _, ok := payload["tools"]; ok {
 		return true
@@ -88,41 +85,37 @@ func RequestHasTools(payload map[string]any) bool {
 	return false
 }
 
-// UpstreamStatusError indicates the Provider returned a non-2xx HTTP status. The
-// status is retained for provider-neutral mapping; no provider body is carried.
-// Provider is the family that returned the status, retained ONLY so the handler
-// may disclose it when the Caller sets Reveal; Error() never includes it, so the
-// family cannot leak through logs or non-revealed error bodies.
+// UpstreamStatusError indicates the Provider returned a non-2xx HTTP status.
+// The upstream body is not kept. Provider records which family returned the
+// status so the handler can disclose it when the Caller sets Reveal; Error
+// never includes it, so it cannot leak through logs or unrevealed errors.
 type UpstreamStatusError struct {
 	Status   int
 	Provider types.ProviderID
 }
 
 func (e UpstreamStatusError) Error() string {
-	// Deliberately provider-neutral: no family/endpoint/credential detail.
+	// No family, endpoint, or credential detail.
 	return fmt.Sprintf("providers: upstream status %d", e.Status)
 }
 
-// FailureKind is a provider-neutral classification of an egress failure, shared
-// by the server's error mapping so no provider/endpoint/credential detail is
-// needed to decide the Caller-facing result.
+// FailureKind is a provider-neutral classification of an egress failure. The
+// server maps it to a Caller-facing status without needing provider detail.
 type FailureKind int
 
 const (
-	// FailureProvider is an upstream-returned error (auth/429/5xx and any other
-	// upstream status). Mapped to 502 Bad Gateway.
+	// FailureProvider is an error status returned by upstream (auth, 429,
+	// 5xx, or any other). Maps to 502 Bad Gateway.
 	FailureProvider FailureKind = iota
-	// FailureTimeout is an upstream non-response within the deadline. Mapped to
-	// 504 Gateway Timeout.
+	// FailureTimeout means upstream did not respond before the deadline. Maps
+	// to 504 Gateway Timeout.
 	FailureTimeout
-	// FailureUnavailable is an upstream that is explicitly unavailable (503/504).
-	// Mapped to 504 Gateway Timeout.
+	// FailureUnavailable means upstream reported itself unavailable (503 or
+	// 504). Maps to 504 Gateway Timeout.
 	FailureUnavailable
 )
 
-// ClassifyFailure maps an egress error to a provider-neutral FailureKind. It is
-// the single source of truth for turning adapter/transport errors into a coarse,
-// identity-free outcome.
+// ClassifyFailure maps an adapter or transport error to a FailureKind.
 func ClassifyFailure(err error) FailureKind {
 	if errors.Is(err, ErrUpstreamTimeout) || errors.Is(err, context.DeadlineExceeded) {
 		return FailureTimeout
@@ -137,9 +130,9 @@ func ClassifyFailure(err error) FailureKind {
 	return FailureProvider
 }
 
-// RevealableProvider returns the Provider family responsible for an error when
-// it is known (an UpstreamStatusError stamped by an adapter), or empty. Callers
-// MUST gate disclosure on the Reveal flag.
+// RevealableProvider returns the Provider family recorded on an
+// UpstreamStatusError in err's chain, or "" if there is none. Callers must
+// only disclose it when Reveal is set.
 func RevealableProvider(err error) types.ProviderID {
 	var se UpstreamStatusError
 	if errors.As(err, &se) {

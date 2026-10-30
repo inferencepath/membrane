@@ -13,8 +13,8 @@ import (
 	"github.com/inferencepath/membrane/test/harness"
 )
 
-// buildAuthzChat wires a chat Handler with a deny-by-default authorization gate
-// whose Caller (acme-app) is authorized for exactly the given Pathways.
+// buildAuthzChat returns a chat Handler whose Caller (acme-app) is authorized
+// for the given Pathways only.
 func buildAuthzChat(t *testing.T, endpoint string, allow ...string) http.Handler {
 	t.Helper()
 	store, err := harness.CallerStoreWithAllow(allow...)
@@ -55,7 +55,7 @@ func TestAuthorizeDeniedForbidden(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("unauthorized pathway status = %d, want 403", resp.StatusCode)
 	}
-	// The denied request must never reach the Membrane / Provider.
+	// The denied request must not reach the Provider.
 	if fake.Last().Body != nil {
 		t.Fatalf("provider was contacted on a forbidden request")
 	}
@@ -65,7 +65,7 @@ func TestAuthorizeDenyByDefault(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "x"})
 	defer fake.Close()
-	// Empty allowlist => authorized for nothing.
+	// An empty allowlist authorizes nothing.
 	ts := httptest.NewServer(buildAuthzChat(t, fake.URL()))
 	defer ts.Close()
 
@@ -79,8 +79,7 @@ func TestAuthorizeDenyByDefault(t *testing.T) {
 	}
 }
 
-// TestAuthorizeDecisionsObserved verifies the handler records identity-free
-// authorization-decision counters for both allow and deny outcomes.
+// TestAuthorizeDecisionsObserved checks that allow and deny decisions are counted.
 func TestAuthorizeDecisionsObserved(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", Model: "m", FinishReason: "stop"})
@@ -98,9 +97,9 @@ func TestAuthorizeDecisionsObserved(t *testing.T) {
 	ts := httptest.NewServer(h)
 	defer ts.Close()
 
-	// Allowed pathway => allow decision recorded.
+	// An allowed Pathway records an allow.
 	post(t, ts.URL+chat.Route, harness.CallerKey, `{"pathway":"chat","messages":[{"role":"user","content":"hi"}]}`).Body.Close()
-	// Unauthorized pathway => deny decision recorded.
+	// An unauthorized Pathway records a deny.
 	post(t, ts.URL+chat.Route, harness.CallerKey, `{"pathway":"summarize","messages":[{"role":"user","content":"hi"}]}`).Body.Close()
 
 	var sb strings.Builder
@@ -116,9 +115,8 @@ func TestAuthorizeDecisionsObserved(t *testing.T) {
 	}
 }
 
-// TestAuthorizeNoExistenceOracle verifies an unauthorized Caller gets the same
-// generic 403 for a Pathway that exists (chat) and one that does not
-// (nonexistent) — no enumeration oracle.
+// TestAuthorizeNoExistenceOracle checks that an unauthorized Caller gets the
+// same 403 whether or not the Pathway exists.
 func TestAuthorizeNoExistenceOracle(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "x"})

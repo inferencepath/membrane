@@ -1,31 +1,29 @@
 package console
 
-// This file defines the console's config EDIT port and its result types. As with
-// the read views, the types live in the console package (so the console imports
-// no Interior/Membrane/Exterior package); the concrete ConfigEditor is
-// implemented in internal/consoleedit and injected. Edits operate on raw file
-// text (config-as-code): the editor validates with the daemon's own parsers,
-// enforces an optimistic-concurrency version check, writes atomically, and
-// triggers the existing fail-closed, last-good reload.
+// The edit port is defined here so the console imports no Interior, Membrane,
+// or Exterior package; internal/consoleedit implements it. Edits work on raw
+// file text: the editor validates with the daemon's parsers, checks the
+// version token, writes atomically, and triggers the fail-closed, last-good
+// reload.
 
-// EditFile is a raw config file plus a content version token (for optimistic
-// concurrency / drift detection).
+// EditFile is a raw config file plus a content version token used for
+// optimistic concurrency.
 type EditFile struct {
 	Kind    string `json:"kind"`
 	Raw     string `json:"raw"`
 	Version string `json:"version"`
 }
 
-// ValidationResult is the outcome of a parse-only dry run. On failure Error is
-// the parser's exact, secret-free message; no write occurs.
+// ValidationResult is the outcome of a parse-only dry run. On failure Error
+// holds the parser's message, which contains no secrets.
 type ValidationResult struct {
 	Valid bool   `json:"valid"`
 	Error string `json:"error,omitempty"`
 }
 
-// ApplyResult is the outcome of an apply (validate → version check → atomic
-// write → reload). Exactly one of Applied/Unchanged/Rejected is true. Reason is
-// a secret-free explanation; Version is the new content token after a write.
+// ApplyResult is the outcome of an apply. One of Applied, Unchanged, or
+// Rejected is true. Reason contains no secrets. Version is the new content
+// token after a write.
 type ApplyResult struct {
 	Applied   bool   `json:"applied"`
 	Unchanged bool   `json:"unchanged"`
@@ -35,26 +33,26 @@ type ApplyResult struct {
 }
 
 // ConfigEditor edits the reloadable config files (pathways, credentials,
-// callers, permeability). A nil ConfigEditor disables the edit endpoints (they
-// return 503) — e.g. when the daemon is not in config-as-code (reloadable) mode.
+// callers, permeability). A nil ConfigEditor makes the edit endpoints return
+// 503, as when the daemon's config is not reloadable.
 type ConfigEditor interface {
 	// Kinds returns the editable config kinds.
 	Kinds() []string
-	// Read returns the current raw content of a kind plus its version token.
+	// Read returns the current raw content of a kind and its version token.
 	Read(kind string) (EditFile, error)
-	// Validate parses raw bytes with the kind's loader (no write).
+	// Validate parses raw with the kind's loader without writing.
 	Validate(kind string, raw []byte) ValidationResult
-	// Apply validates, checks version (optimistic lock), writes atomically, and
-	// triggers a reload. The returned ApplyResult reports the outcome.
+	// Apply validates raw, checks the version token, writes atomically, and
+	// triggers a reload.
 	Apply(kind string, raw []byte, version string) ApplyResult
 
-	// ValidateForm renders a structured form (JSON) into the kind's YAML —
-	// merging into the current file so comments and untouched/secret fields
-	// (hashes, rotation, next_secret_ref) are preserved — and validates it with
-	// the kind's loader (no write).
+	// ValidateForm renders a JSON form into the kind's YAML and validates it
+	// without writing. The form is merged into the current file so comments and
+	// fields the form does not carry (hashes, rotation, next_secret_ref) are
+	// kept.
 	ValidateForm(kind string, form []byte) ValidationResult
-	// ApplyForm renders a structured form (as ValidateForm) then runs the same
-	// validate → version check → atomic write → reload pipeline as Apply.
+	// ApplyForm renders a form as ValidateForm does, then applies it as Apply
+	// does.
 	ApplyForm(kind string, form []byte, version string) ApplyResult
 }
 

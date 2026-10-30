@@ -119,8 +119,8 @@ providers:
 }
 
 func TestParseProvidersBedrockInferenceProfiles(t *testing.T) {
-	// A us. profile from a us-* region, a global. profile (unrestricted), and a
-	// plain foundation model all parse cleanly; only a geography mismatch fails.
+	// us. profiles from a us-* region, global. profiles and plain foundation
+	// models parse; only a geography mismatch fails.
 	y := `version: 1
 providers:
   - {name: bedrock-ip, family: bedrock, auth_mode: aws_default_chain, region: us-east-1,

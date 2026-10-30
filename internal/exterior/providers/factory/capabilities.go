@@ -6,15 +6,14 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// This file is the single, Exterior-zone declaration of which egress Operations
-// each Provider family's adapter supports. The
-// assembly layer consults it to reject, fail-closed at config validation, a
-// Pathway wired to a provider that cannot perform the Pathway's Operation.
+// The tables below declare which egress Operations each Provider family's
+// adapter supports. Config assembly uses them to reject a Pathway whose Provider
+// cannot perform the Pathway's Operation.
 //
-// The OpenAI-compatible families (openai/local) are the reference and support
-// every modelled operation; other families support the subset they offer
-// natively. "model-dependent" support is represented as supported here (the
-// provider's admin-controlled model allowlist gates the actual model).
+// The OpenAI-compatible families (openai, local) support every modelled
+// operation; other families support the subset they offer natively. Support
+// that depends on the model is listed as supported, since the Provider's model
+// allowlist decides which models can be used.
 
 func opSet(ops ...types.Operation) map[types.Operation]struct{} {
 	m := make(map[types.Operation]struct{}, len(ops))
@@ -25,7 +24,7 @@ func opSet(ops ...types.Operation) map[types.Operation]struct{} {
 }
 
 // familyOperations maps a Provider family to the set of Operations its adapter
-// supports. A family absent from this map supports only chat (fail-safe default).
+// supports. A family absent from this map supports only chat.
 var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 	config.ProviderOpenAI: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
@@ -51,7 +50,7 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationImageGeneration,
 	),
-	// Gemini: chat + embeddings (embedContent).
+	// Gemini embeddings use embedContent.
 	config.ProviderGemini: opSet(
 		types.OperationChat, types.OperationEmbeddings,
 	),
@@ -61,11 +60,8 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 // given Operation. An empty operation is treated as the default (chat). An
 // unknown family supports only chat.
 //
-// This is the DECLARED (family-level) capability matrix — a fast pre-check and
-// the source of truth for documentation/UI. The AUTHORITATIVE runtime gate is
-// AdapterSupports, which verifies a concretely-built adapter actually implements
-// the operation's capability interface; assembly enforces both so a Pathway can
-// never be wired to an adapter that cannot perform its operation.
+// This is the declared, family-level matrix. AdapterSupports checks what a
+// built adapter implements; assembly enforces both.
 func FamilySupports(family types.ProviderID, op types.Operation) bool {
 	if op == "" {
 		op = types.DefaultOperation
@@ -78,13 +74,11 @@ func FamilySupports(family types.ProviderID, op types.Operation) bool {
 	return ok
 }
 
-// AdapterSupports reports whether a concretely-built Provider adapter actually
-// implements the capability required to perform the given Operation. Chat is the
-// core capability (every Provider implements Complete/Stream); each new operation
-// is an OPTIONAL interface the adapter must satisfy by type assertion. This is the
-// structural, fail-closed gate consulted at config assembly — independent of the
-// declared FamilySupports matrix — so a declared-but-unimplemented operation is
-// rejected at validation time rather than failing a live request.
+// AdapterSupports reports whether a built Provider adapter implements the
+// capability interface for the given Operation. Every Provider supports chat;
+// other operations are optional interfaces. Config assembly checks this so an
+// operation that is declared but not implemented fails validation instead of a
+// live request.
 func AdapterSupports(adapter providers.Provider, op types.Operation) bool {
 	if op == "" {
 		op = types.DefaultOperation

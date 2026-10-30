@@ -1,10 +1,10 @@
-// Package resolve maps a logical Pathway to a concrete Binding (Provider +
-// model + per-Binding timeouts). It is Interior-only and server-side: Bindings
-// are never disclosed to a Caller.
+// Package resolve maps a logical Pathway to a concrete Binding: a Provider, a
+// model, and per-Binding timeouts. It is Interior-only, and Bindings are never
+// disclosed to a Caller.
 //
 // A Pathway resolves to a Pool of targets with a deterministic selection
-// Strategy (priority or round-robin); a single Binding is modelled as a
-// one-target priority Pool.
+// Strategy, priority or round-robin. A single Binding is a one-target priority
+// Pool.
 package resolve
 
 import (
@@ -18,7 +18,7 @@ import (
 
 // ErrTargetNotAllowed is returned by Plan when a caller cascade references a
 // provider not attached to the Pathway, or a model not in that provider's
-// allowed list. The message is caller-safe (no routing details leaked).
+// allowed list. The message contains no routing details.
 var ErrTargetNotAllowed = errors.New("provider/model not allowed in this pathway")
 
 // PlanTarget is one resolved cascade tier: the configured provider (by name) and
@@ -71,13 +71,13 @@ const (
 	StrategyRoundRobin Strategy = "round_robin"
 )
 
-// Binding is the resolved egress target for a Pathway. It does NOT include the
-// Provider endpoint or credential — those are applied at/after the Membrane and
-// never reach the Interior resolution result.
+// Binding is the resolved egress target for a Pathway. It does not include the
+// Provider endpoint or credential; those are applied at the Membrane or later
+// and never appear in the Interior resolution result.
 //
-// Provider is a pool-local target key (opaque to the Caller): the Transporter
-// maps it to a concrete adapter and the Membrane attaches the credential. It is
-// never caller/org identity.
+// Provider is a pool-local target key that the Caller never sees. The
+// Transporter maps it to a concrete adapter and the Membrane attaches the
+// credential. It is never a caller or org identity.
 type Binding struct {
 	Provider types.ProviderID
 	Model    string
@@ -90,31 +90,30 @@ type Binding struct {
 }
 
 // Pool is a set of interchangeable targets for one Pathway with a selection
-// Strategy. Selection is deterministic and identity-independent. It is a plain
-// value (no runtime state) so it can be constructed and copied freely.
+// Strategy. Selection is deterministic and does not depend on Caller identity.
+// Pool has no runtime state, so it can be copied freely.
 type Pool struct {
 	Strategy Strategy
 	Targets  []Binding
 }
 
-// poolRuntime holds a Pool plus its selection state (e.g. the round-robin
-// cursor). It is never copied after construction.
+// poolRuntime holds a Pool plus its selection state, such as the round-robin
+// cursor. It must not be copied after construction.
 type poolRuntime struct {
 	strategy Strategy
 	targets  []Binding
 	rr       atomic.Uint64
 }
 
-// Resolver holds the static Pathway → Pool map and, in managed mode, the
+// Resolver holds the static map from Pathway to Pool and, in managed mode, the
 // per-Pathway routing policy consulted by Plan.
 type Resolver struct {
 	pools    map[types.PathwayID]*poolRuntime
 	policies map[types.PathwayID]PathwayPolicy
 }
 
-// SetPolicy installs the Pathway routing policies consulted by Plan. A Resolver
-// without policies behaves as before (Plan returns the default-provider tier, or
-// nil when the Pathway has no policy, preserving legacy pool behavior).
+// SetPolicy installs the Pathway routing policies consulted by Plan. Without a
+// policy for a Pathway, Plan returns nil and the Transporter uses the Pool.
 func (r *Resolver) SetPolicy(policies map[types.PathwayID]PathwayPolicy) {
 	r.policies = policies
 }
@@ -122,17 +121,18 @@ func (r *Resolver) SetPolicy(policies map[types.PathwayID]PathwayPolicy) {
 // Plan computes the ordered cascade for a request. It applies the Pathway's
 // cascade policy:
 //
-//   - No policy for the Pathway → nil plan (the Transporter uses its pool).
-//   - cascade_allowed is false, or the caller supplied no targets → a single
-//     tier: the default provider with its default model (the caller cannot
-//     choose a model in this case).
-//   - cascade_allowed is true with targets → the targets ordered by ascending
-//     cascade. Every target is validated up front: its provider must be attached
-//     to the Pathway and its model (or the provider default) must be in that
-//     provider's allowed list; any violation returns ErrTargetNotAllowed and no
-//     plan is produced.
+//   - With no policy for the Pathway, the plan is nil and the Transporter uses
+//     its pool.
+//   - If cascade_allowed is false or the caller supplied no targets, the plan
+//     is a single tier: the default provider with its default model. The caller
+//     cannot choose a model in this case.
+//   - If cascade_allowed is true and targets are given, the plan is the targets
+//     in ascending cascade order. Each target is validated first: its provider
+//     must be attached to the Pathway, and its model (or the provider default)
+//     must be in that provider's allowed list. Any violation returns
+//     ErrTargetNotAllowed and no plan.
 //
-// A caller-chosen model is sticky: it is never substituted across the cascade.
+// A caller-chosen model is never substituted across the cascade.
 func (r *Resolver) Plan(pathway types.PathwayID, targets []types.ChatTarget) ([]PlanTarget, error) {
 	policy, ok := r.policies[pathway]
 	if !ok {
@@ -210,9 +210,8 @@ func normalizeStrategy(s Strategy) Strategy {
 }
 
 // Operation returns the egress operation configured for a Pathway, and whether a
-// policy exists for it. A policy with an empty Operation reports the default
-// (chat), so legacy pathways resolve as chat. Pathways with no policy report
-// (DefaultOperation, false).
+// policy exists for it. A policy with an empty Operation reports the default,
+// chat. A Pathway with no policy reports (DefaultOperation, false).
 func (r *Resolver) Operation(pathway types.PathwayID) (types.Operation, bool) {
 	policy, ok := r.policies[pathway]
 	if !ok {
@@ -243,6 +242,6 @@ func (p *poolRuntime) selectBinding() (Binding, bool) {
 		n := p.rr.Add(1) - 1
 		return p.targets[int(n%uint64(len(p.targets)))], true
 	}
-	// Priority: targets are pre-sorted ascending, so the first is preferred.
+	// Targets are sorted by priority, so the first is preferred.
 	return p.targets[0], true
 }

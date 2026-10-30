@@ -72,7 +72,7 @@ type Config struct {
 	TranscriptionText     string
 	TranscriptionDuration float64
 	// SpeechAudio is the binary audio body returned by /v1/audio/speech, with
-	// SpeechContentType as its Content-Type (empty ⇒ audio/mpeg).
+	// SpeechContentType as its Content-Type (audio/mpeg when empty).
 	SpeechAudio       []byte
 	SpeechContentType string
 	// Status, when set to a non-2xx value, is returned instead of a completion.

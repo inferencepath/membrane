@@ -1,17 +1,14 @@
 // Package keyring holds pooled Provider credentials and resolves them to an
-// Egress Identity by reference (the credential's name). It fails closed — an
-// unresolvable primary reference at startup means that credential's egress path
-// is not enabled.
+// Egress Identity by credential name. It fails closed: if a primary reference
+// cannot be resolved at startup, that credential's egress path is not enabled.
 //
-// The Keyring supports zero-downtime secret-VALUE rotation (not config-file
-// reload): it periodically (and on demand, e.g. SIGHUP) re-resolves each reference
-// from its backend. When a `next_secret_ref` is configured and resolvable, its
-// value becomes active (rotation forward); otherwise the primary reference's
-// current value is used. Resolution returns a copy, so in-flight requests are
-// never disturbed by a rotation.
+// Secret values rotate without downtime. Each reference is re-resolved
+// periodically and on demand (for example on SIGHUP). A resolvable
+// next_secret_ref takes precedence over the primary reference. Resolve returns
+// a copy, so a rotation does not affect in-flight requests.
 //
-// Secrets exist ONLY by reference (env:/file:/vault:); a resolved secret value
-// is never logged. This package is Exterior and must not import Interior
+// Secrets are held only by reference (env:, file:, vault:) and resolved values
+// are never logged. This package is Exterior and must not import Interior
 // packages.
 package keyring
 
@@ -69,10 +66,8 @@ func WithClock(now func() time.Time) Option { return func(k *Keyring) { k.now = 
 // disables periodic rotation (references are resolved once at startup).
 func WithRotationInterval(d time.Duration) Option { return func(k *Keyring) { k.interval = d } }
 
-// New resolves every entry's primary (or rotated) reference and returns a
-// Keyring. It fails closed: if any entry cannot be resolved at startup, an error
-// is returned and no Keyring is produced, so the egress path is never enabled
-// with a missing credential.
+// New resolves every entry and returns a Keyring. It fails closed: if any entry
+// cannot be resolved, it returns an error and no Keyring.
 func New(entries []Entry, opts ...Option) (*Keyring, error) {
 	k := &Keyring{
 		resolver: resolveRef,
@@ -99,10 +94,9 @@ func New(entries []Entry, opts ...Option) (*Keyring, error) {
 }
 
 // Resolve returns the current Egress Identity for a credential name, or an error
-// if none is held (fail closed). If periodic rotation is enabled and the
-// refresh interval has elapsed, the reference is re-resolved first; a failed
-// re-resolution keeps the last-good value so requests do not fail during a
-// transient backend outage.
+// if none is held. When the rotation interval has elapsed the reference is
+// re-resolved first; on failure the last-good value is kept so a transient
+// backend outage does not fail requests.
 func (k *Keyring) Resolve(name string) (providers.EgressIdentity, error) {
 	re, ok := k.entries[name]
 	if !ok {
@@ -157,18 +151,17 @@ func (k *Keyring) refreshEntry(re *ringEntry) error {
 	return nil
 }
 
-// ResolveRef resolves a base secret reference (env:/file:) to its value. It is
-// the default resolver and is exported so the composition root can compose it
-// with the sealed-store resolver for the `secret:` scheme (delegating non-secret
-// schemes here) without duplicating env/file handling.
+// ResolveRef resolves an env: or file: secret reference to its value. It is the
+// default resolver, exported so a resolver for the secret: scheme can delegate
+// other schemes to it.
 func ResolveRef(ref string) (string, error) { return resolveRef(ref) }
 
 // resolveRef resolves a secret reference to its value. Supported schemes:
-//   - env:VAR_NAME   → the value of the environment variable
-//   - file:/path     → the trimmed contents of the file
+//   - env:VAR_NAME: the value of the environment variable
+//   - file:/path: the trimmed contents of the file
 //
-// Inline secret values and unknown schemes are rejected. (vault: is validated by
-// the config loader but not dereferenced here.)
+// Inline values and other schemes are rejected. The config loader validates
+// vault: references, but they are not dereferenced here.
 func resolveRef(ref string) (string, error) {
 	scheme, rest, ok := strings.Cut(ref, ":")
 	if !ok {

@@ -51,7 +51,7 @@ func TestCompleteBadURL(t *testing.T) {
 func TestCompleteConnError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := ts.URL
-	ts.Close() // nothing is listening now -> connection error (not a timeout)
+	ts.Close() // connection refused, which is not a timeout
 	a := openai.New("openai", url, 0)
 	_, err := a.Complete(context.Background(), req(), providers.EgressIdentity{})
 	if err == nil || errors.Is(err, providers.ErrUpstreamTimeout) {
@@ -111,7 +111,7 @@ func TestStreamIdleTimeout(t *testing.T) {
 		fl := w.(http.Flusher)
 		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")
 		fl.Flush()
-		<-r.Context().Done() // stall: never send more data
+		<-r.Context().Done() // stall without sending more data
 	})
 	a := openai.New("openai", ts.URL, 30*time.Millisecond)
 	r := req()

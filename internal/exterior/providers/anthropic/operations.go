@@ -1,11 +1,8 @@
-// This file extends the Anthropic adapter with the Responses operation.
-// Anthropic has no native /responses endpoint, so the adapter BRIDGES the
-// operation onto the Messages API: the allowlisted responses payload is
-// translated to a Messages request (input→messages, instructions→system,
-// max_output_tokens→max_tokens) and the Messages reply is mapped back to the
-// provider-neutral canonical Responses shape. As everywhere, the request is built
-// ONLY from the neutral providers.Request plus the injected EgressIdentity — no
-// Caller identity, Caller Key, or Reveal flag is accessible here.
+// Anthropic has no /responses endpoint, so the Responses operation is served
+// through the Messages API: input maps to messages, instructions to system, and
+// max_output_tokens to max_tokens, and the reply is mapped back to the canonical
+// Responses shape.
+
 package anthropic
 
 import (
@@ -25,7 +22,7 @@ func (a *Adapter) buildResponsesBody(req providers.Request, stream bool) ([]byte
 	for k, v := range req.Payload {
 		switch k {
 		case "input", "instructions", "max_output_tokens", "stream":
-			// Translated explicitly below.
+			// Translated below.
 		default:
 			body[k] = v
 		}
@@ -35,7 +32,7 @@ func (a *Adapter) buildResponsesBody(req providers.Request, stream bool) ([]byte
 		case string:
 			body["messages"] = []any{map[string]any{"role": "user", "content": t}}
 		default:
-			// Already a structured message array — pass through unchanged.
+			// A structured message array passes through unchanged.
 			body["messages"] = t
 		}
 	}
@@ -55,8 +52,8 @@ func (a *Adapter) buildResponsesBody(req providers.Request, stream bool) ([]byte
 	return json.Marshal(body)
 }
 
-// Responses implements providers.ResponsesProvider (non-streaming) by bridging to
-// the Messages API and mapping the reply into one canonical output message item.
+// Responses implements providers.ResponsesProvider. The Messages reply becomes a
+// single output message item.
 func (a *Adapter) Responses(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalResponses, error) {
 	body, err := a.buildResponsesBody(req, false)
 	if err != nil {
@@ -109,9 +106,9 @@ func (a *Adapter) Responses(ctx context.Context, req providers.Request, id provi
 	}, nil
 }
 
-// ResponsesStream implements providers.ResponsesProvider (streaming) by relaying
-// Messages API SSE events as canonical responses stream chunks: content_block_delta
-// text becomes an output-text delta; message_stop / clean EOF terminates.
+// ResponsesStream implements providers.ResponsesProvider. Text deltas are
+// relayed as response.output_text.delta chunks; message_stop or a clean EOF ends
+// the stream.
 func (a *Adapter) ResponsesStream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.ResponsesStreamChunk) error) error {
 	body, err := a.buildResponsesBody(req, true)
 	if err != nil {

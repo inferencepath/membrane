@@ -1,20 +1,15 @@
 package types
 
-// This file defines the logical, provider-agnostic `moderations` API DTOs and the
-// canonical inward representation. These are Interior-only shapes: the Caller
-// Key is carried in the request transport (Authorization header), never in the
-// body, and the Reveal flag is an Interior-only control field that never crosses
-// the Membrane.
-
-// ModerationsRequest is the inbound logical moderations request. Input is a
-// string or an array of strings (validated by the handler).
+// ModerationsRequest is the inbound moderations request. Input is a string or
+// an array of strings, validated by the handler.
 type ModerationsRequest struct {
 	Pathway string `json:"pathway"`
 	Input   any    `json:"input"`
-	// Reveal is the Interior-only opt-in to receive provider/model.
+	// Reveal asks for the provider and model in the response. It does not
+	// cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
@@ -25,9 +20,9 @@ type ModerationResult struct {
 	CategoryScores map[string]float64 `json:"category_scores"`
 }
 
-// CanonicalModerations is the provider-agnostic moderations result assembled on
-// the inward path. Provider and Model are surfaced only when the Reveal flag was
-// set (gated by the inbound Permeability on_reveal set).
+// CanonicalModerations is the moderations result assembled on the inward path.
+// Provider and Model reach the Caller only on Reveal, gated by the inbound
+// Permeability on_reveal set.
 type CanonicalModerations struct {
 	PathwayID PathwayID
 	Results   []ModerationResult
@@ -35,8 +30,8 @@ type CanonicalModerations struct {
 	Model     string
 }
 
-// ModerationsResponse is the Caller-facing, provider-neutral moderations
-// response. Provider and Model are populated only when the Caller set Reveal.
+// ModerationsResponse is the moderations response returned to the Caller.
+// Provider and Model are set only when the Caller requested Reveal.
 type ModerationsResponse struct {
 	Pathway  string             `json:"pathway"`
 	Results  []ModerationResult `json:"results"`

@@ -17,9 +17,8 @@ import (
 // demoHash is a valid 64-hex (sha256) placeholder caller secret hash.
 const demoHash = "458d6534a760ed4c8c2f1c8f86a517572cb56fa6a0f8554efdda2cb8532a4816"
 
-// TestOperationsCatalog verifies the operations catalog is derived from the real
-// operation enum and Permeability vocabularies: chat is unrestricted (no palette),
-// every other operation carries a route and a non-empty field palette.
+// TestOperationsCatalog checks that chat is unrestricted and every other
+// operation has a route and a non-empty field list.
 func TestOperationsCatalog(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
 	view := a.Operations()
@@ -47,7 +46,7 @@ func TestOperationsCatalog(t *testing.T) {
 	if len(emb.OutboundAllow) == 0 || len(emb.InboundFields) == 0 {
 		t.Errorf("embeddings must carry a field palette: %+v", emb)
 	}
-	// Palettes are sorted (stable UI rendering).
+	// Field lists are sorted.
 	for i := 1; i < len(emb.OutboundAllow); i++ {
 		if emb.OutboundAllow[i-1] > emb.OutboundAllow[i] {
 			t.Errorf("outbound palette not sorted: %v", emb.OutboundAllow)
@@ -55,8 +54,7 @@ func TestOperationsCatalog(t *testing.T) {
 	}
 }
 
-// newSeeded opens a temp store with a complete, valid single-pathway config
-// (references/hashes only) and returns it.
+// newSeeded opens a temp store holding a valid single-pathway config.
 func newSeeded(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), store.DBFileName))
@@ -74,8 +72,7 @@ func newSeeded(t *testing.T) *store.Store {
 	exec(`INSERT INTO providers (name, family, endpoint, models, default_model, secret_ref)
 	      VALUES ('main', 'openai', 'https://api.openai.com', 'gpt-4o-mini', 'gpt-4o-mini', 'env:TEST_STORE_KEY')`)
 	exec(`INSERT INTO pathway_providers (pathway, provider) VALUES ('chat', 'main')`)
-	// An advanced, raw credential (distinct from the provider) for the
-	// Credentials view tests.
+	// A standalone credential for the Credentials view tests.
 	exec(`INSERT INTO credentials (name, secret_ref) VALUES ('legacy', 'env:TEST_STORE_KEY')`)
 	exec(`INSERT INTO callers (key_id, caller_id, name, secret_hash) VALUES ('ck_demo', 'acme', 'demo', ?)`, demoHash)
 	exec(`INSERT INTO caller_allow (key_id, pathway) VALUES ('ck_demo', 'chat')`)
@@ -96,7 +93,7 @@ func testCfg() config.Config {
 	cfg.Audit.Sink = "jsonlines"
 	cfg.Audit.Path = "/var/log/membrane/audit.jsonl"
 	cfg.Console.Enabled = true
-	cfg.Console.Address = ":7474"
+	cfg.Console.Address = ":8300"
 	cfg.Console.AuthTokenRef = "env:MEMBRANE_CONSOLE_TOKEN"
 	cfg.DataDir = "/data"
 	return cfg
@@ -149,7 +146,7 @@ func TestReadViews(t *testing.T) {
 	if err != nil || len(perm.Pathways) != 1 || perm.Pathways[0].Pathway != "chat" {
 		t.Fatalf("permeability = %+v (err %v)", perm, err)
 	}
-	// The read-only outbound denylist is surfaced for the Console to display.
+	// The outbound denylist is included for display.
 	if len(perm.OutboundDenylist) == 0 {
 		t.Fatal("expected outbound denylist to be surfaced")
 	}
@@ -166,7 +163,7 @@ func TestReadViews(t *testing.T) {
 
 func TestCredentialResolveReflectsEnv(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
-	// Not set → does not resolve.
+	// An unset variable does not resolve.
 	creds, _ := a.Credentials()
 	if creds.Credentials[0].Resolves {
 		t.Fatalf("expected unresolved without env var")
@@ -204,7 +201,7 @@ func TestApplyRawWritesAndReloads(t *testing.T) {
 	if !res.Applied || calls != 1 {
 		t.Fatalf("apply = %+v calls=%d", res, calls)
 	}
-	// Persisted: the new embed pathway is present.
+	// The new embed pathway was stored.
 	ef, _ := a.Read(store.KindPathways)
 	if !strings.Contains(ef.Raw, "embed") {
 		t.Fatalf("expected persisted pathway, got %s", ef.Raw)
@@ -273,7 +270,7 @@ func TestApplyFormCallerAllowOnly(t *testing.T) {
 	if len(callers.Callers[0].Allow) != 2 {
 		t.Fatalf("expected 2 allows, got %+v", callers.Callers[0].Allow)
 	}
-	// Hash must be preserved (verify via rendered doc still carries it).
+	// The rendered document must still carry the hash.
 	ef, _ := a.Read(store.KindCallers)
 	if !strings.Contains(ef.Raw, demoHash) {
 		t.Fatalf("caller hash must be preserved: %s", ef.Raw)
@@ -328,7 +325,7 @@ func TestCreatePathwayAtomic(t *testing.T) {
 		t.Fatalf("CreatePathway = %+v calls=%d", res, calls)
 	}
 
-	// Both the routing and the permeability policy must now exist for "reason".
+	// Both the pathway and its permeability policy must exist for "reason".
 	paths, _ := a.Pathways()
 	var foundPath bool
 	for _, p := range paths.Pathways {
@@ -349,7 +346,7 @@ func TestCreatePathwayAtomic(t *testing.T) {
 	if !foundPerm {
 		t.Fatalf("permeability for 'reason' not created: %+v", perm.Pathways)
 	}
-	// The pre-existing pathway must be preserved (atomic upsert, not replace).
+	// The existing pathway must be kept.
 	if len(paths.Pathways) != 2 {
 		t.Fatalf("expected 2 pathways after create, got %+v", paths.Pathways)
 	}
@@ -359,8 +356,8 @@ func TestCreatePathwayWithOperation(t *testing.T) {
 	calls := 0
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, &calls))
 
-	// An embeddings pathway with an embeddings-vocabulary permeability policy,
-	// routed to the openai provider (which supports embeddings), must apply.
+	// An embeddings pathway on the openai provider, with an embeddings
+	// permeability policy, must apply.
 	res := a.CreatePathway(console.PathwayWizardInput{
 		Pathway:         "embed",
 		Operation:       "embeddings",
@@ -374,8 +371,7 @@ func TestCreatePathwayWithOperation(t *testing.T) {
 		t.Fatalf("CreatePathway(embeddings) = %+v calls=%d", res, calls)
 	}
 
-	// The operation must persist on the stored pathway (fail-closed vocabulary
-	// and capability enforcement happen at snapshot build; see app tests).
+	// The operation must be stored. Vocabulary checks happen at Snapshot build.
 	paths, _ := a.Pathways()
 	var found bool
 	for _, p := range paths.Pathways {
@@ -393,8 +389,7 @@ func TestCreatePathwayWithOperation(t *testing.T) {
 
 func TestCreatePathwayUpsertReplaces(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
-	// Re-create the existing "chat" pathway with a changed cascade flag; it should
-	// update in place rather than duplicate.
+	// Re-creating "chat" with a different cascade flag updates it in place.
 	res := a.CreatePathway(console.PathwayWizardInput{
 		Pathway:         "chat",
 		Providers:       []string{"main"},
@@ -442,8 +437,8 @@ func TestCreateCallerHashesAndStores(t *testing.T) {
 	if found == nil || found.callerID != "acme-app" || found.allow != 1 {
 		t.Fatalf("caller not created correctly: %+v", back.Callers)
 	}
-	// The stored hash must equal SHA-256 of the secret, and the plaintext must
-	// never be present in the rendered callers document.
+	// The stored hash is the SHA-256 of the secret; the plaintext must not
+	// appear in the rendered document.
 	raw, _ := st.RenderCallers()
 	wantHash := admit.HashSecret("s3cr3t-demo-key")
 	if !strings.Contains(string(raw), wantHash) {
@@ -464,7 +459,7 @@ func TestDeleteCaller(t *testing.T) {
 	if err != nil || !removed {
 		t.Fatalf("DeleteCaller = %v, %v", removed, err)
 	}
-	// Deleting an absent key is a no-op (not an error).
+	// Deleting an absent key is not an error.
 	removed, err = a.DeleteCaller("ck_absent")
 	if err != nil || removed {
 		t.Fatalf("DeleteCaller(absent) = %v, %v", removed, err)
@@ -535,8 +530,7 @@ func TestReadUnknownKind(t *testing.T) {
 
 func TestFormWithTimeoutsAndNextRefPreserved(t *testing.T) {
 	s := newSeeded(t)
-	// Give the existing credential a rotation next-ref to confirm it is preserved
-	// across a form edit that does not manage rotation.
+	// A form edit must keep the credential's next_secret_ref.
 	if _, err := s.DB().Exec(`UPDATE credentials SET next_secret_ref = 'env:NEXT' WHERE name = 'legacy'`); err != nil {
 		t.Fatalf("seed next ref: %v", err)
 	}
@@ -605,7 +599,7 @@ func TestApplyFormNoOpUnchanged(t *testing.T) {
 
 func TestApplyRawCallersInvalidHashRejected(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
-	// Short (invalid) hash must be rejected by the admit parser before any write.
+	// The admit parser rejects a short hash before anything is written.
 	callers := "version: 1\ncallers:\n  - key_id: ck_demo\n    hash: deadbeef\n    caller_id: acme\n    allow: [chat]\n"
 	res := a.Apply(store.KindCallers, []byte(callers), "")
 	if !res.Rejected {

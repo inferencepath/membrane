@@ -28,9 +28,8 @@ func sampleProvider() store.ProviderRow {
 	}
 }
 
-// TestUpsertProviderWritesBothRows proves the sealed secret and its provider
-// definition are written together, and that re-running Set updates in place
-// (version bump) rather than duplicating.
+// TestUpsertProviderWritesBothRows checks that the secret and provider are
+// written together and that a repeat upsert updates in place.
 func TestUpsertProviderWritesBothRows(t *testing.T) {
 	s := openStore(t)
 	p := store.ProviderUpsert{
@@ -56,7 +55,7 @@ func TestUpsertProviderWritesBothRows(t *testing.T) {
 		t.Fatalf("unexpected providers: %+v", provs)
 	}
 
-	// Rotate: same name updates in place and bumps the secret version.
+	// Rotating under the same name bumps the secret version.
 	p.Secret.Ciphertext = []byte("ct2")
 	if err := s.UpsertProvider(p); err != nil {
 		t.Fatalf("re-upsert: %v", err)
@@ -71,8 +70,8 @@ func TestUpsertProviderWritesBothRows(t *testing.T) {
 	}
 }
 
-// TestUpsertProviderPreservesOtherProviders proves the targeted upsert does not
-// wipe unrelated providers (unlike the replace-all WriteProviders path).
+// TestUpsertProviderPreservesOtherProviders checks that UpsertProvider leaves
+// other providers in place.
 func TestUpsertProviderPreservesOtherProviders(t *testing.T) {
 	s := openStore(t)
 	if err := s.WriteProviders([]store.ProviderRow{{

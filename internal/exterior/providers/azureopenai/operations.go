@@ -1,13 +1,8 @@
-// This file extends the Azure OpenAI adapter with the operation-breadth
-// methods. Azure is OpenAI-compatible on the wire, so request/response shapes
-// mirror the openai adapter; only the URL (deployment path + api-version) and the
-// auth (api-key / Entra bearer token) differ. Every method builds its request
-// ONLY from the neutral providers.Request plus the injected EgressIdentity — no
-// Caller identity, Caller Key, or Reveal flag is ever accessible here.
-//
-// Azure selects the model via the deployment in the path, so the body never
-// carries a model field; the logical model surfaced on Reveal falls back to the
-// request's resolved model when the upstream does not echo one.
+// Non-chat operations use the same wire shapes as the openai adapter; only the
+// URL (deployment path and api-version) and auth differ. The deployment selects
+// the model, so request bodies carry no model field, and the reported model
+// falls back to the request's model when the upstream does not return one.
+
 package azureopenai
 
 import (
@@ -35,8 +30,8 @@ func (a *Adapter) opEndpoint(op string) string {
 	return u + "?api-version=" + url.QueryEscape(a.apiVersion)
 }
 
-// applyAuth attaches only the Egress Identity (api-key or Entra bearer token).
-// No caller/org identity, Caller Key, forwarding, or correlation headers.
+// applyAuth attaches the Egress Identity as an api-key header or Entra bearer
+// token. No other identity headers are sent.
 func (a *Adapter) applyAuth(ctx context.Context, httpReq *http.Request, id providers.EgressIdentity) error {
 	if a.tokenSource != nil {
 		token, terr := a.tokenSource(ctx)
@@ -50,8 +45,8 @@ func (a *Adapter) applyAuth(ctx context.Context, httpReq *http.Request, id provi
 	return nil
 }
 
-// opBody copies the allowlisted payload, dropping model (deployment selects it)
-// and stream (set explicitly by streaming callers only).
+// opBody copies the allowlisted payload without model, which the deployment
+// selects, and stream, which streaming callers set themselves.
 func opBody(req providers.Request) ([]byte, error) {
 	body := make(map[string]any, len(req.Payload)+1)
 	for k, v := range req.Payload {
@@ -303,10 +298,10 @@ func (a *Adapter) Moderate(ctx context.Context, req providers.Request, id provid
 	return types.CanonicalModerations{Results: results, Provider: a.id, Model: a.modelOrReq(oa.Model, req.Model)}, nil
 }
 
-// Transcribe implements providers.TranscriptionProvider. It RECONSTRUCTS the
-// outbound multipart from the allowlisted payload (the "file" bytes sent with a
-// fixed generic filename — the client filename never crosses — plus allowlisted
-// form fields). It never forwards the client's original multipart.
+// Transcribe implements providers.TranscriptionProvider. It builds a new
+// multipart body from the allowlisted payload. The file is sent under a fixed
+// generic filename, so the client's filename and original multipart body are
+// never forwarded.
 func (a *Adapter) Transcribe(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalTranscription, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
@@ -383,9 +378,9 @@ func speechContentType(format string) string {
 	}
 }
 
-// Speech implements providers.SpeechProvider. It POSTs the allowlisted payload and
-// relays the binary audio body incrementally via emit (first a Head chunk with the
-// Content-Type and Provider/Model), applying the same idle timeout as streaming.
+// Speech implements providers.SpeechProvider. It relays the audio body through
+// emit, starting with a Head chunk carrying the Content-Type, Provider, and
+// Model, and applies the streaming idle timeout.
 func (a *Adapter) Speech(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.SpeechChunk) error) error {
 	body, err := opBody(req)
 	if err != nil {

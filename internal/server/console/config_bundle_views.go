@@ -1,16 +1,13 @@
 package console
 
-// This file defines the console's declarative config BUNDLE port and its result
-// types — the `deck`-equivalent export/apply surface. As with the other config
-// ports, the types live in the console package (so the console imports no
-// Interior/Membrane/Exterior/store package); the concrete ConfigBundle is
-// implemented in internal/consolestore and injected. A bundle is one canonical
-// YAML document holding all four kinds; apply reconciles the whole configuration
-// atomically through the daemon's own parsers. Secrets stay by reference; caller
-// secrets are hashes only — nothing here carries a value.
+// The ConfigBundle port is defined here so the console imports no Interior,
+// Membrane, Exterior, or store package; internal/consolestore implements it. A
+// bundle is one YAML document holding all four config kinds, and apply
+// replaces the whole configuration atomically using the daemon's parsers.
+// Bundles carry secret references and caller hashes, never values.
 
-// BundleFile is a rendered declarative bundle plus a content version token (a
-// hash over the canonical bytes) for optimistic concurrency / drift detection.
+// BundleFile is a rendered bundle plus a version token (a hash of the
+// canonical bytes) for optimistic concurrency and drift detection.
 type BundleFile struct {
 	Raw     string `json:"raw"`
 	Version string `json:"version"`
@@ -41,7 +38,7 @@ type ConfigBundle interface {
 	// DiffBundle validates a candidate bundle and reports the per-kind change
 	// set against the live store, without writing.
 	DiffBundle(raw []byte) (BundleDiff, error)
-	// ApplyBundle validates a candidate bundle, checks the optimistic-concurrency
-	// version, writes all kinds in one transaction, and triggers a reload.
+	// ApplyBundle validates a candidate bundle, checks the version, writes all
+	// kinds in one transaction, and triggers a reload.
 	ApplyBundle(raw []byte, version string) ApplyResult
 }

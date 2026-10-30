@@ -61,7 +61,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first open: %v", err)
 	}
-	// Insert a row so we can prove reopening does not wipe or re-run migrations.
+	// Reopening must not wipe data or re-run migrations.
 	if _, err := s1.DB().Exec(
 		`INSERT INTO pathways (name, cascade_allowed, default_provider) VALUES ('chat', 1, 'openai-main')`,
 	); err != nil {
@@ -94,8 +94,8 @@ func TestForeignKeysEnforced(t *testing.T) {
 	s := openTemp(t)
 	defer s.Close()
 
-	// A pathway_providers row referencing a non-existent pathway must be rejected
-	// when foreign keys are enforced (the DSN sets foreign_keys=ON).
+	// The DSN enables foreign keys, so a pathway_providers row for a missing
+	// pathway is rejected.
 	_, err := s.DB().Exec(
 		`INSERT INTO pathway_providers (pathway, provider) VALUES ('ghost', 'default')`,
 	)

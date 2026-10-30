@@ -2,13 +2,12 @@ package store
 
 import "database/sql"
 
-// This file is the write path used by the console editor. Each writer replaces
-// all rows for one config kind inside a single transaction, so a partially
-// applied edit is never observable. Secrets are never written: credentials hold
-// references, callers hold hashes. The serving Snapshot is rebuilt from the
-// store by an explicit reload after a successful write.
+// Each writer replaces all rows of one kind in a single transaction, so a
+// partial edit is never visible. Credentials hold references and callers hold
+// hashes; no secret value is written here. The serving Snapshot picks up a
+// write only on an explicit reload.
 
-// WritePathways replaces all pathways and their targets.
+// WritePathways replaces all pathways and their provider sets.
 func (s *Store) WritePathways(rows []PathwayRow) error {
 	return s.inTx(func(tx *sql.Tx) error { return writePathwaysTx(tx, rows) })
 }
@@ -18,15 +17,14 @@ func (s *Store) WriteCredentials(rows []CredentialRow) error {
 	return s.inTx(func(tx *sql.Tx) error { return writeCredentialsTx(tx, rows) })
 }
 
-// WriteProviders replaces all provider definitions (references only; the sealed
-// values in the secrets table are untouched).
+// WriteProviders replaces all provider definitions. Sealed values in the
+// secrets table are left alone.
 func (s *Store) WriteProviders(rows []ProviderRow) error {
 	return s.inTx(func(tx *sql.Tx) error { return writeProvidersTx(tx, rows) })
 }
 
-// WriteCallers replaces the entire Caller Key store (callers + allowlists). It
-// writes hashes only (never a secret). Used by the raw-YAML editor path; the
-// structured allow-only edit uses SetCallerAllow so hashes need never be typed.
+// WriteCallers replaces all Caller Keys and their allowlists. To change only
+// an allowlist without supplying hashes, use SetCallerAllow.
 func (s *Store) WriteCallers(rows []CallerRow) error {
 	return s.inTx(func(tx *sql.Tx) error { return writeCallersTx(tx, rows) })
 }
@@ -36,15 +34,13 @@ func (s *Store) WritePermeability(rows []PermeabilityRow) error {
 	return s.inTx(func(tx *sql.Tx) error { return writePermeabilityTx(tx, rows) })
 }
 
-// WriteBundle replaces all four kinds in a single transaction, so a declarative
-// apply is all-or-nothing: a partially applied bundle is never observable, and a
-// failure leaves the store exactly as it was. The serving Snapshot is rebuilt by
-// an explicit reload after a successful write.
+// WriteBundle replaces every kind in a single transaction, so a bundle apply
+// either succeeds completely or leaves the store unchanged.
 func (s *Store) WriteBundle(b Bundle) error {
 	return s.inTx(func(tx *sql.Tx) error {
-		// Clear pathways first (cascades to targets) so replacing providers does
-		// not trip the targets→providers foreign key, then write providers (a
-		// target's provider FK must exist before the target is inserted).
+		// Pathways reference providers by foreign key. Delete pathways (and,
+		// by cascade, pathway_providers) before replacing providers, and write
+		// providers before pathways.
 		if _, err := tx.Exec(`DELETE FROM pathways`); err != nil {
 			return err
 		}
@@ -64,7 +60,7 @@ func (s *Store) WriteBundle(b Bundle) error {
 	})
 }
 
-// --- tx-scoped per-kind writers (shared by the single-kind and bundle paths) --
+// Per-kind writers shared by the single-kind and bundle paths.
 
 func writePathwaysTx(tx *sql.Tx, rows []PathwayRow) error {
 	if _, err := tx.Exec(`DELETE FROM pathways`); err != nil { // cascades to pathway_providers
@@ -164,10 +160,9 @@ func writePermeabilityTx(tx *sql.Tx, rows []PermeabilityRow) error {
 	return nil
 }
 
-// SetCallerAllow replaces the allowlist for one existing caller (matched by
-// key_id). It never touches the caller's hash, caller_id, or name — so no
-// secret-derived value is required from or exposed to the editor. It returns
-// ErrUnknownKeyID when the key_id does not exist.
+// SetCallerAllow replaces the allowlist of the caller with the given key_id,
+// leaving its hash, caller_id and name unchanged. It returns ErrUnknownKeyID
+// if no such caller exists.
 func (s *Store) SetCallerAllow(keyID string, allow []string) error {
 	return s.inTx(func(tx *sql.Tx) error {
 		var exists int
@@ -190,7 +185,7 @@ func (s *Store) SetCallerAllow(keyID string, allow []string) error {
 	})
 }
 
-// inTx runs fn in a transaction, committing on success and rolling back on error.
+// inTx runs fn in a transaction and commits if fn returns nil.
 func (s *Store) inTx(fn func(*sql.Tx) error) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -203,8 +198,8 @@ func (s *Store) inTx(fn func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
-// defaultAuthMode defaults a blank auth mode to api_key (the legacy/static-key
-// behavior), so older rows and callers that omit the field remain valid.
+// defaultAuthMode maps a blank auth mode to api_key, so rows and callers that
+// omit the field stay valid.
 func defaultAuthMode(s string) string {
 	if s == "" {
 		return "api_key"

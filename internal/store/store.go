@@ -1,17 +1,15 @@
-// Package store is the Membrane control-plane state store: an embedded,
-// single-file SQLite database (pure-Go, no CGO) that holds the mutable runtime
-// configuration the operator manages through the Membrane Console — pathways
-// and their routing targets, credential REFERENCES, Caller Keys and their
-// allowlists, and the Permeability policy.
+// Package store is the Membrane control-plane state store: a single-file
+// SQLite database (pure Go, no CGO) holding the runtime configuration managed
+// through the Membrane Console. That covers pathways and their providers,
+// credential references, Caller Keys and their allowlists, and the
+// Permeability policy.
 //
-// It is the single source of truth for config-as-data. The daemon builds its
-// immutable serving Snapshot from this store and reloads atomically on change
-// (fail-closed, last-good) — exactly as the file-backed model did, but with one
-// embedded store instead of hand-authored YAML files.
+// The daemon builds its immutable serving Snapshot from this store and reloads
+// on change (fail closed, last-good).
 //
-// Security invariant: the store holds secret REFERENCES only (env:/file:/vault:)
-// — never a secret value. Caller secrets are persisted solely as hashes. Nothing
-// in this package resolves, reads, or logs a secret value.
+// The store holds secret references (env:/file:/vault:), hashed caller
+// secrets, and sealed ciphertext; never a plaintext secret. Nothing in this
+// package resolves, reads, or logs a secret value.
 package store
 
 import (
@@ -43,8 +41,7 @@ type Store struct {
 // Open opens (creating if absent) the embedded state database at path, applies
 // the connection pragmas suited to a single-file embedded store, and migrates
 // the schema up to the latest version. The parent directory is created with
-// 0700 if missing. First run therefore yields an empty-but-valid schema — the
-// "it just works from docker compose" bootstrap.
+// mode 0700 if missing, so a first run yields an empty, valid schema.
 func Open(path string) (*Store, error) {
 	if path == "" {
 		return nil, fmt.Errorf("store: open: empty path")
@@ -59,8 +56,8 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
-	// An embedded single-file DB must serialize writers; a single connection
-	// avoids "database is locked" churn while WAL still allows concurrent reads.
+	// SQLite serializes writers; one connection avoids "database is locked"
+	// errors.
 	db.SetMaxOpenConns(1)
 
 	if err := db.Ping(); err != nil {
@@ -76,8 +73,8 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// DB exposes the underlying *sql.DB for repository packages built on top of the
-// store. Callers must not close it; use Store.Close.
+// DB returns the underlying *sql.DB. Callers must not close it; use
+// Store.Close.
 func (s *Store) DB() *sql.DB { return s.db }
 
 // Path returns the database file path.
@@ -86,11 +83,9 @@ func (s *Store) Path() string { return s.path }
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
-// dsn builds the modernc.org/sqlite DSN with embedded-store pragmas:
-//   - busy_timeout: wait out brief write contention instead of erroring.
-//   - journal_mode=WAL: readers don't block the single writer.
-//   - synchronous=NORMAL: safe with WAL, far faster than FULL.
-//   - foreign_keys=ON: enforce the referential integrity the schema declares.
+// dsn builds the modernc.org/sqlite DSN. busy_timeout waits out brief write
+// contention, WAL keeps readers from blocking the writer, synchronous=NORMAL is
+// safe with WAL, and foreign_keys enforces the schema's references.
 func dsn(path string) string {
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(5000)")

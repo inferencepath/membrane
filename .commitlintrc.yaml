@@ -1,4 +1,4 @@
-# Commit message linting — Conventional Commits.
+# Commit message linting (Conventional Commits).
 #
 # Enforced locally (optional git hook) and intended for CI. Run with:
 #   npx --yes @commitlint/cli@19 --from=origin/main --config .commitlintrc.yaml

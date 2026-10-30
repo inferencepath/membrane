@@ -1,7 +1,7 @@
-// Live-path Diffusion-leak tests. These drive the fully-wired chat handler
-// against a capturing fake Provider and assert that the exact upstream request
-// carries the Egress Identity and NONE of the caller/org identity, Caller Key,
-// or Interior control fields — across non-streaming, streaming, and error paths.
+// Live-path Diffusion-leak tests. They drive the wired chat handler against a
+// capturing fake Provider and check that the upstream request carries the Egress
+// Identity and none of the caller or org identity, Caller Key, or Interior
+// control fields, on the non-streaming, streaming, and error paths.
 package diffusionleak
 
 import (
@@ -15,8 +15,8 @@ import (
 	"github.com/inferencepath/membrane/test/harness"
 )
 
-// Identity markers injected on the Caller->Membrane hop that must NEVER appear on
-// the Membrane->Provider hop.
+// Identity markers injected on the Caller-to-Membrane hop. None of them may
+// appear on the Membrane-to-Provider hop.
 const (
 	fwdIP       = "203.0.113.9"
 	callerUA    = "evilbrowser/9000"

@@ -36,7 +36,7 @@ func TestResponsesBridgesToMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Responses: %v", err)
 	}
-	// Request translation: input→messages, instructions→system, max_output_tokens→max_tokens.
+	// input, instructions, and max_output_tokens map to messages, system, and max_tokens.
 	if gotPath != "/v1/messages" {
 		t.Errorf("path = %q", gotPath)
 	}
@@ -52,7 +52,7 @@ func TestResponsesBridgesToMessages(t *testing.T) {
 	if _, ok := gotBody["input"]; ok {
 		t.Error("raw responses 'input' must not cross")
 	}
-	// Response mapping: one canonical output message carrying the text.
+	// The reply maps to one output message carrying the text.
 	if resp.FinishReason != "end_turn" || resp.Usage.TotalTokens != 9 || resp.Provider != "anthropic" {
 		t.Errorf("resp = %+v", resp)
 	}

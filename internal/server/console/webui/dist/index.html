@@ -7,79 +7,126 @@
   <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="32.5 27.5 104 104"><defs><mask id="behind" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200"><rect width="200" height="200" fill="%23fff"/><rect x="46" y="60" width="60" height="60" fill="%23000"/></mask></defs><g mask="url(%23behind)"><rect x="61.5" y="33.5" width="71" height="71" rx="5.5" fill="%23D92F02"/><rect x="72.5" y="44.5" width="49" height="49" rx="3" fill="%232CA58D"/><polyline points="76,49.5 116.5,49.5 116.5,90" fill="none" stroke="%231C7F6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0.01 6 7 6"/></g><polyline points="46,116 46,60 106,60 106,120 76,120 76,93" fill="none" stroke="%23D92F02" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="46" cy="116" r="9.5" fill="%23D92F02"/><circle cx="76" cy="93" r="10" fill="%23D92F02"/></svg>' />
   <style>
     :root {
-      /* InferencePath brand: warm off-white surfaces, dark teal ink, and an
+      /* InferencePath brand: neutral surfaces, dark teal navigation, and an
          orange-red accent (matches inferencepath.io). */
-      --bg: #faf7f2; --panel: #ffffff; --border: #e8e1d6; --fg: #16302c;
-      --muted: #6f7a73; --ok: #2f9e44; --bad: #e5484d;
-      --accent: #e0512f; --accent-hover: #c9431f; --accent-weak: #fbeae3;
+      --bg: #f7f8f6; --panel: #ffffff; --panel-muted: #fbfcfb;
+      --border: #dfe5e1; --border-strong: #cad4ce;
+      --fg: #132f2a; --muted: #60716b; --subtle: #8b9993;
+      --ok: #147d57; --ok-bg: #e7f5ed; --bad: #be3144; --bad-bg: #fcebed;
+      --accent: #d94a2b; --accent-hover: #bd391f; --accent-weak: #fff0eb;
+      --nav-bg: #153c35; --nav-fg: #c9d6d1; --nav-muted: #8ea69e;
+      --nav-active: #24554b; --nav-hover: #1d4a41;
       --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --shadow-sm: 0 1px 2px rgba(13, 42, 35, .04), 0 1px 3px rgba(13, 42, 35, .05);
+      --shadow-md: 0 8px 24px rgba(13, 42, 35, .08);
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; background: var(--bg); color: var(--fg);
-      font: 14px/1.5 var(--font-sans);
+      margin: 0; min-width: 320px; background: var(--bg); color: var(--fg);
+      font: 14px/1.55 var(--font-sans); -webkit-font-smoothing: antialiased;
     }
     header {
-      display: flex; align-items: center; gap: 12px;
-      padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+      height: 64px; display: flex; align-items: center; gap: 11px;
+      padding: 0 28px; border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.96); box-shadow: var(--shadow-sm);
+      position: sticky; top: 0; z-index: 20;
     }
-    header h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: -.01em; }
-    header .ver { color: var(--muted); font-size: 12px; }
-    /* Membrane icon shown in the top header. */
-    .brand-logo { width: 26px; height: 26px; flex: 0 0 26px; display: block; }
-    main { display: flex; max-width: 1100px; margin: 0 auto; }
+    header h1 { font-size: 15px; margin: 0; font-weight: 750; letter-spacing: -.015em; }
+    header .ver {
+      color: var(--subtle); font-size: 11px; line-height: 1;
+      padding-left: 11px; border-left: 1px solid var(--border);
+    }
+    .brand-logo { width: 27px; height: 27px; flex: 0 0 27px; display: block; }
+    main { display: flex; min-height: calc(100vh - 64px); width: 100%; }
     nav {
-      width: 220px; padding: 20px 12px; border-right: 1px solid var(--border); min-height: 80vh;
+      width: 246px; flex: 0 0 246px; padding: 20px 12px 36px;
+      background: var(--nav-bg); min-height: calc(100vh - 64px);
+      position: sticky; top: 64px; align-self: flex-start; max-height: calc(100vh - 64px);
+      overflow-y: auto; box-shadow: inset -1px 0 rgba(255,255,255,.05);
     }
     nav a {
-      display: flex; align-items: center; gap: 9px;
-      padding: 8px 12px; color: var(--muted); text-decoration: none;
-      border-radius: 6px; cursor: pointer;
-      font-size: 13px;
+      display: flex; align-items: center; gap: 10px; min-height: 36px;
+      padding: 8px 11px; color: var(--nav-fg); text-decoration: none;
+      border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 520;
+      transition: background .14s ease, color .14s ease;
     }
-    nav a:hover { background: var(--accent-weak); color: var(--fg); }
-    nav a.active { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+    nav a:hover { background: var(--nav-hover); color: #fff; }
+    nav a.active {
+      background: var(--nav-active); color: #fff; font-weight: 650;
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
     .nav-ico {
-      width: 15px; height: 15px; flex: 0 0 15px;
-      stroke: currentColor; fill: none; stroke-width: 1.8;
-      stroke-linecap: round; stroke-linejoin: round;
+      width: 16px; height: 16px; flex: 0 0 16px;
+      stroke: currentColor; fill: none; stroke-width: 1.75;
+      stroke-linecap: round; stroke-linejoin: round; opacity: .92;
     }
     .nav-group {
-      margin: 14px 0 6px; padding: 0 12px;
-      color: #7f8a82; font-size: 10px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .08em;
+      margin: 24px 0 7px; padding: 0 11px; color: var(--nav-muted);
+      font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .1em;
     }
-    section { flex: 1; padding: 24px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(22, 48, 44, .04); }
-    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    .card .value { font-size: 22px; margin-top: 6px; }
-    .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-    .pill.ok { background: rgba(63,185,80,.15); color: var(--ok); }
-    .pill.bad { background: rgba(248,81,73,.15); color: var(--bad); }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
-    .empty { color: var(--muted); padding: 16px 0; }
-    h2 { font-size: 15px; margin: 0 0 16px; }
+    nav > .nav-group:first-of-type { margin-top: 10px; }
+    section { flex: 1; min-width: 0; max-width: 1280px; padding: 32px 38px 56px; }
+    section > h2:first-child {
+      font-size: 22px; line-height: 1.25; letter-spacing: -.025em; font-weight: 740;
+      margin: 0 0 24px; color: var(--fg);
+    }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 14px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+      padding: 17px 18px; box-shadow: var(--shadow-sm);
+    }
+    .card .label { color: var(--muted); font-size: 10px; font-weight: 720; text-transform: uppercase; letter-spacing: .075em; }
+    .card .value { color: var(--fg); font-size: 23px; line-height: 1.2; font-weight: 690; margin-top: 9px; letter-spacing: -.02em; }
+    .pill {
+      display: inline-flex; align-items: center; min-height: 22px; padding: 3px 9px;
+      border-radius: 999px; border: 1px solid transparent; font-size: 11px; line-height: 1;
+      font-weight: 700; letter-spacing: .01em; background: #eef1ef; color: #52635d;
+    }
+    .pill.ok { background: var(--ok-bg); border-color: #c8ead8; color: var(--ok); }
+    .pill.bad { background: var(--bad-bg); border-color: #f4cbd1; color: var(--bad); }
+    table {
+      width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden; box-shadow: var(--shadow-sm);
+    }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid #edf0ee; vertical-align: middle; }
+    th {
+      color: var(--muted); background: var(--panel-muted); font-weight: 720; font-size: 10px;
+      text-transform: uppercase; letter-spacing: .075em; white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr { transition: background .12s ease; }
+    tbody tr:hover { background: #fcfdfc; }
+    .empty { color: var(--muted); padding: 20px 14px; }
+    h2 { font-size: 17px; letter-spacing: -.015em; margin: 30px 0 14px; font-weight: 720; }
     .muted { color: var(--muted); }
-    code, pre { font-family: var(--font-mono); }
+    code {
+      font: 12px/1.4 var(--font-mono); color: #285449; background: #edf3f0;
+      padding: 2px 5px; border-radius: 4px;
+    }
+    pre { font-family: var(--font-mono); }
     input, select, textarea {
-      background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px;
+      background: #fff; color: var(--fg); border: 1px solid var(--border-strong);
+      border-radius: 6px; padding: 8px 10px; font: 13px/1.4 var(--font-sans);
+      box-shadow: inset 0 1px 1px rgba(13,42,35,.02); transition: border .14s ease, box-shadow .14s ease;
     }
+    input:focus, select:focus, textarea:focus {
+      outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217,74,43,.14);
+    }
+    textarea { line-height: 1.55; }
     button {
-      background: var(--panel); color: var(--fg); border: 1px solid var(--border);
-      border-radius: 6px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer;
+      background: #fff; color: var(--fg); border: 1px solid var(--border-strong);
+      border-radius: 6px; min-height: 34px; padding: 7px 12px; font: 650 12px/1 var(--font-sans);
+      cursor: pointer; transition: background .14s ease, border .14s ease, color .14s ease, box-shadow .14s ease;
     }
-    button:hover { border-color: var(--accent); color: var(--accent); }
-    /* Primary actions use the brand accent. */
-    button.primary, #login-btn, [data-act^="save-"], #edit-apply, [data-act="run-test"] {
-      background: var(--accent); color: #fff; border-color: var(--accent);
+    button:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 1px 2px rgba(13,42,35,.06); }
+    button:focus-visible { outline: 3px solid rgba(217,74,43,.18); outline-offset: 1px; }
+    button.primary, #login-btn, [data-act^="save-"], #edit-apply, [data-act="run-test"], [data-act="ext-apply"] {
+      background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 1px 2px rgba(180,55,30,.2);
     }
     button.primary:hover, #login-btn:hover, [data-act^="save-"]:hover,
-    #edit-apply:hover, [data-act="run-test"]:hover {
+    #edit-apply:hover, [data-act="run-test"]:hover, [data-act="ext-apply"]:hover {
       background: var(--accent-hover); border-color: var(--accent-hover); color: #fff;
     }
     .login-overlay {
@@ -132,6 +179,38 @@
     .wiz-provider-count { color: var(--muted); font-size: 12px; }
     .wiz-actions { display: flex; gap: 8px; margin-top: 16px; }
     .wiz-hint { margin: 0; }
+    .wiz-step {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+      padding: 22px; box-shadow: var(--shadow-sm);
+    }
+    .wiz-step h3 { font-size: 18px; letter-spacing: -.015em; }
+    .wiz-providers { background: var(--panel-muted); border-color: var(--border); }
+    #egress { display: inline-flex; align-items: center; }
+    #signout { min-height: auto; color: var(--muted); }
+    #signout:hover { color: var(--accent); border-color: transparent; box-shadow: none; }
+    .login-card { border-radius: 12px; box-shadow: var(--shadow-md); }
+    .login-card h2 { font-size: 22px; letter-spacing: -.02em; }
+    /* Wide operator consoles should use the available working surface, rather
+       than compressing the policy tables and forms into a consumer-app column. */
+    @media (min-width: 1200px) {
+      section { padding-left: 46px; padding-right: 46px; }
+    }
+    @media (max-width: 760px) {
+      header { height: 58px; padding: 0 16px; }
+      header .ver { display: none; }
+      main { display: block; min-height: calc(100vh - 58px); }
+      nav {
+        position: static; width: 100%; max-height: none; min-height: auto;
+        padding: 10px; display: flex; gap: 3px; overflow-x: auto; overflow-y: hidden;
+      }
+      nav a { flex: 0 0 auto; }
+      .nav-group { display: none; }
+      section { padding: 24px 16px 40px; }
+      .cards { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+      .wiz-grid { grid-template-columns: 1fr; }
+      .wiz-lbl { padding-top: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -276,7 +355,7 @@
       const err = document.getElementById('login-err');
       if (!token) { err.textContent = 'Enter a token.'; return; }
       const res = await rawFetch('/api/console/status', { headers: { 'X-Console-Token': token } });
-      if (!res.ok) { err.textContent = 'Invalid token — check console.auth_token_ref.'; return; }
+      if (!res.ok) { err.textContent = 'Invalid token. Check console.auth_token_ref.'; return; }
       consoleToken = token;
       sessionStorage.setItem(TOKEN_KEY, token);
       hideLogin();
@@ -297,7 +376,7 @@
     const csvToList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
     // loadVersion fetches a config file's current content-version token. It
-    // returns null when editing is unavailable (static mode → 503), which the
+    // returns null when editing is unavailable (static mode returns 503), which the
     // screens use to hide their Edit controls.
     async function loadVersion(kind) {
       const res = await fetch('/api/console/edit/' + kind);
@@ -460,7 +539,7 @@
 
     // Secrets: the sealed secret store. Operators enter a provider key once here;
     // it is encrypted at rest and referenced from a credential as `secret:<name>`.
-    // Values are WRITE-ONLY — the API never returns one, so this screen shows only
+    // Values are write-only: the API never returns one, so this screen shows only
     // metadata (name, version, when, whether a credential references it).
     async function secrets() {
       const res = await fetch('/api/console/secrets');
@@ -617,13 +696,13 @@
             <label style="display:inline-flex;gap:4px;align-items:center;margin-right:12px">
               <input type="checkbox" class="cal-allow-cap" value="${attr(p)}"${i === 0 ? ' checked' : ''}>${esc(p)}
             </label>`).join('')
-        : '<span class="muted">(no pathways yet — add a pathway first)</span>';
+        : '<span class="muted">(no pathways yet; add a pathway first)</span>';
       return `
-        <h2>Callers <span class="muted">(ids &amp; allowlists — secrets are hashed, never stored)</span>
+        <h2>Callers <span class="muted">(ids &amp; allowlists; secrets are hashed, never stored)</span>
           <button data-act="edit-callers" style="float:right">Edit allowlists</button></h2>
         <div class="card" style="margin-bottom:16px">
           <h3 style="margin:0 0 8px">Add caller</h3>
-          <p class="muted" style="margin:0 0 10px">Key ID, Caller ID, and Secret are auto-generated. Copy the full key after creation — it is shown once.</p>
+          <p class="muted" style="margin:0 0 10px">Key ID, Caller ID, and Secret are auto-generated. Copy the full key after creation. It is shown once.</p>
           <div style="display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;max-width:760px">
             <label>Name (optional)</label><input id="cal-name" placeholder="e.g. Acme Production" autocomplete="off">
             <label>Allowed pathways</label><div>${capChecks}</div>
@@ -664,7 +743,7 @@
         if (box) {
           box.innerHTML =
             '<span class="pill ok">created</span> ' +
-            '<span class="muted">Copy and save this key somewhere secure now — it will not be shown again.</span>' +
+            '<span class="muted">Copy and save this key somewhere secure now. It will not be shown again.</span>' +
             '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
             '<code id="caller-once-key">' + esc(lastCreatedCallerKey) + '</code>' +
             '<button data-act="copy-last-caller-key" title="Copy full key" aria-label="Copy full key">📋 Copy</button>' +
@@ -690,7 +769,7 @@
         <td>${(d.inboundDefault || []).map(esc).join(', ')}</td>
         <td>${(d.inboundOnReveal || []).map(esc).join(', ') || '-'}</td></tr>`).join('');
       return `
-        <h2>Permeability <span class="muted">(v${v.version || '?'} — the Membrane's source of truth)</span>
+        <h2>Permeability <span class="muted">(v${v.version || '?'}, the Membrane's source of truth)</span>
           <button data-act="edit-permeability" style="float:right">Edit</button></h2>
         <table><thead><tr><th>Pathway</th><th>Outbound allow</th><th>Inbound default</th><th>Inbound on-reveal</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="4" class="empty">No permeability spec loaded.</td></tr>'}</tbody></table>
@@ -698,15 +777,15 @@
     }
 
     // denylistPanel renders the read-only, Membrane-wide outbound denylist: the
-    // hard-coded identity/control fields that can NEVER be allowlisted outbound.
-    // It is informational only — there is no edit path (the floor is immutable).
+    // hard-coded identity/control fields that can never be allowlisted outbound.
+    // It is informational only; there is no edit path (the floor is immutable).
     function denylistPanel(fields) {
       if (!fields || !fields.length) return '';
       const pills = fields.map((f) => `<code>${esc(f)}</code>`).join(' &nbsp; ');
       return `
         <div class="card" style="margin-top:16px">
           <h3 style="margin:0 0 6px">Outbound denylist <span class="muted">(global, read-only)</span></h3>
-          <p class="muted" style="margin:0 0 8px">These identity/control fields can never be added to any pathway's outbound allowlist — attempting to do so is rejected on save. Enforced Membrane-wide and not editable.</p>
+          <p class="muted" style="margin:0 0 8px">These identity/control fields can never be added to any pathway's outbound allowlist. Attempting to do so is rejected on save. Enforced Membrane-wide and not editable.</p>
           <div>${pills}</div>
         </div>`;
     }
@@ -747,9 +826,9 @@
       const options = EDIT_KINDS.map((k) =>
         `<option value="${k}"${k === editState.kind ? ' selected' : ''}>${esc(k)}</option>`).join('');
       return `
-        <h2>Edit Config <span class="muted">(validate → atomic write → hot reload)</span></h2>
+        <h2>Edit Config <span class="muted">(validate, atomic write, hot reload)</span></h2>
         <p class="muted">Edits are validated, written atomically to the managed state store, and hot-reloaded.
-          Secrets remain by reference (env:/file:/vault:) — never inline.</p>
+          Secrets remain by reference (env:/file:/vault:), never inline.</p>
         <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
           <select id="edit-kind">${options}</select>
           <button id="edit-load">Load</button>
@@ -839,7 +918,7 @@
     }
 
     // Suggested starting field lists for a brand-new permeability row. These are
-    // only a convenience the operator reviews before saving — nothing crosses the
+    // only a convenience the operator reviews before saving; nothing crosses the
     // Membrane until this is explicitly saved.
     const PERM_SUGGESTED = {
       out: 'messages, temperature, max_tokens, top_p, stop, stream',
@@ -877,7 +956,7 @@
         inboundOnReveal: PERM_SUGGESTED.rev.split(', '),
       }, true)).join('');
       const hint = missing.length
-        ? `<p class="muted">${missing.length} pathway(s) have no permeability policy yet — pre-filled below as <span class="pill bad">new</span>. Review the allowed fields and Save to activate them.</p>`
+        ? `<p class="muted">${missing.length} pathway(s) have no permeability policy yet, pre-filled below as <span class="pill bad">new</span>. Review the allowed fields and Save to activate them.</p>`
         : '';
       section.innerHTML = `
         <h2>Edit Permeability <span class="muted">(comma-separated logical fields)</span></h2>
@@ -1146,7 +1225,7 @@
         row('Role ARN', inp('prov-role-arn', '', 'arn:aws:iam::123456789012:role/membrane'));
         row('External ID (optional)', inp('prov-external-id', '', ''));
       } else {
-        row('', '<span class="muted">Uses the host\u2019s ambient identity — no key is stored.</span>');
+        row('', '<span class="muted">Uses the host\u2019s ambient identity; no key is stored.</span>');
       }
       return `<div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;max-width:720px">${g.join('')}</div>`;
     }
@@ -1158,7 +1237,7 @@
       const name = providerNameFromForm();
       // Secret-backed auth modes hold a sealed secret reference.
       if (!authStoresSecret(currentAuthMode(kind))) {
-        preview.textContent = AUTH_LABELS[currentAuthMode(kind)] + ' — no stored secret';
+        preview.textContent = AUTH_LABELS[currentAuthMode(kind)] + ' (no stored secret)';
         return;
       }
       preview.textContent = name ? ('secret:' + name) : 'secret:<name>';
@@ -1246,8 +1325,8 @@
     // Creating a pathway requires BOTH its routing (pathways kind) and its
     // Membrane policy (permeability kind): the loader is fail-closed on the link
     // between them, so saving either alone is rejected. The wizard collects both
-    // and submits them atomically via POST /api/console/pathways (one validate →
-    // write → reload). This avoids the dead-ends where a half-created pathway (no
+    // and submits them atomically via POST /api/console/pathways (one validate,
+    // write, reload cycle). This avoids the dead-ends where a half-created pathway (no
     // permeability, or no caller) blocks the save.
     let pathwayWizard = { step: 1 };
 
@@ -1313,8 +1392,8 @@
       const hint = document.getElementById('wiz-op-hint');
       if (hint) {
         hint.textContent = o
-          ? ('Egress route ' + (o.route || '') + (o.restricted ? ' — permeability fields are restricted to this operation\u2019s vocabulary.' : ' — permeability fields are unrestricted (chat).'))
-          : 'Egress route /v1/chat — permeability fields are unrestricted (chat).';
+          ? ('Egress route ' + (o.route || '') + (o.restricted ? ': permeability fields are restricted to this operation\u2019s vocabulary.' : ': permeability fields are unrestricted (chat).'))
+          : 'Egress route /v1/chat: permeability fields are unrestricted (chat).';
       }
       // Drop any auto-suggested (unedited) permeability so Step 2 re-prefills for
       // the new operation. User-entered values (perm.edited) are preserved.
@@ -1332,7 +1411,7 @@
             <label data-name="${attr(String(n || '').toLowerCase())}">
               <input type="checkbox" class="wiz-prov" value="${attr(n)}"${selectedProviders.has(n) ? ' checked' : ''}>${esc(n)}
             </label>`).join('')
-        : '<span class="muted">(add a provider first — Providers screen)</span>';
+        : '<span class="muted">(add a provider first on the Providers screen)</span>';
       const currentOp = routing.operation || 'chat';
       const opList = operationsCache.length ? operationsCache : [{ operation: 'chat', route: '/v1/chat', restricted: false }];
       const opOptions = opList
@@ -1341,8 +1420,8 @@
       const palette = operationPalette(currentOp);
       const curOpView = operationsByName[currentOp];
       const opHint = curOpView
-        ? ('Egress route ' + (curOpView.route || '') + (curOpView.restricted ? ' — permeability fields are restricted to this operation\u2019s vocabulary.' : ' — permeability fields are unrestricted (chat).'))
-        : 'Egress route /v1/chat — permeability fields are unrestricted (chat).';
+        ? ('Egress route ' + (curOpView.route || '') + (curOpView.restricted ? ': permeability fields are restricted to this operation\u2019s vocabulary.' : ': permeability fields are unrestricted (chat).'))
+        : 'Egress route /v1/chat: permeability fields are unrestricted (chat).';
       const selectedNames = names.filter((n) => selectedProviders.has(n));
       const defaultNames = selectedNames.length ? selectedNames : names;
       const defOptions = defaultNames.length
@@ -1350,7 +1429,7 @@
         : '<option value="">(none)</option>';
       const step1 = `
         <div id="wiz-step1" class="wiz-step" style="${pathwayWizard.step === 1 ? '' : 'display:none'}">
-          <h3>Step 1 — Routing</h3>
+          <h3>Step 1: Routing</h3>
           <p class="muted wiz-hint">Name the pathway, attach one or more providers, and pick the default.</p>
           <div class="wiz-grid">
             <label class="wiz-lbl" for="wiz-name">Pathway name</label>
@@ -1383,8 +1462,8 @@
         </div>`;
       const step2 = `
         <div id="wiz-step2" class="wiz-step" style="${pathwayWizard.step === 2 ? '' : 'display:none'}">
-          <h3>Step 2 — Permeability</h3>
-          <p class="muted wiz-hint">Define what may cross the Membrane for this pathway. Prefilled with safe defaults — review and adjust. Identity/control fields are always rejected outbound.</p>
+          <h3>Step 2: Permeability</h3>
+          <p class="muted wiz-hint">Define what may cross the Membrane for this pathway. Prefilled with safe defaults; review and adjust. Identity/control fields are always rejected outbound.</p>
           <div class="wiz-grid">
             <label class="wiz-lbl" for="wiz-out">Outbound allow</label><input id="wiz-out" value="${attr(perm.outboundAllow || palette.out)}">
             <label class="wiz-lbl" for="wiz-def">Inbound default</label><input id="wiz-def" value="${attr(perm.inboundDefault || palette.def)}">
@@ -1564,6 +1643,10 @@
         const name = (nameEl && nameEl.value) ? nameEl.value.trim() : '';
         if (!confirmDelete('pathway draft', name)) return;
         btn.closest('.cap-block').remove();
+      } else if (act === 'ext-validate') {
+        await extValidate(btn.dataset.ext);
+      } else if (act === 'ext-apply') {
+        await extApply(btn.dataset.ext);
       }
     }
 
@@ -1578,7 +1661,7 @@
         <h2>Export / Apply <span class="muted">(declarative GitOps bundle)</span></h2>
         <p class="muted">Export the entire live configuration as one YAML bundle, keep it in version control,
           and apply it back. Apply validates and reconciles every kind atomically, then hot-reloads.
-          Secrets stay by reference (env:/file:/vault:); caller keys are hashes only — never values.</p>
+          Secrets stay by reference (env:/file:/vault:); caller keys are hashes only, never values.</p>
         <div style="display:flex;gap:12px;align-items:center;margin:12px 0;flex-wrap:wrap">
           <button data-act="bundle-export">Export &amp; download</button>
           <button data-act="bundle-upload">Load file…</button>
@@ -1621,9 +1704,9 @@
       const b = await res.json().catch(() => ({}));
       if (!res.ok) { bundleMsg('bad', b.error || ('diff failed (' + res.status + ')')); return; }
       if (!b.valid) { bundleMsg('bad', esc(b.error || 'invalid bundle')); return; }
-      if (!b.changed) { bundleMsg('ok', 'no changes — bundle matches the live configuration'); return; }
+      if (!b.changed) { bundleMsg('ok', 'no changes: the bundle matches the live configuration'); return; }
       const changed = (b.kinds || []).filter((k) => k.changed).map((k) => esc(k.kind)).join(', ');
-      bundleMsg('ok', 'valid — would change: <strong>' + (changed || 'nothing') + '</strong>');
+      bundleMsg('ok', 'valid; would change: <strong>' + (changed || 'nothing') + '</strong>');
     }
 
     async function bundleApply() {
@@ -1646,7 +1729,7 @@
         // A pasted/loaded bundle has no known base version; apply will proceed
         // without the optimistic check (empty version) unless re-exported.
         bundleState.version = '';
-        bundleMsg('ok', 'loaded ' + esc(file.name) + ' — Diff to preview, then Apply');
+        bundleMsg('ok', 'loaded ' + esc(file.name) + '. Diff to preview, then Apply');
       };
       reader.readAsText(file);
     }
@@ -1687,9 +1770,9 @@
         <tr><td>${esc(new Date(e.time).toLocaleString())}</td><td>${esc(e.action)}</td>
         <td>${esc(e.result)}</td><td>${esc(e.remote)}</td></tr>`).join('');
       return `
-        <h2>Usage Audit <span class="muted">(Interior-only — no content, secrets, or topology)</span></h2>
+        <h2>Usage Audit <span class="muted">(Interior-only; no content, secrets, or topology)</span></h2>
         ${usageHtml}
-        <h2 style="margin-top:28px">Admin Actions <span class="muted">(who / what / when — secret-free)</span></h2>
+        <h2 style="margin-top:28px">Admin Actions <span class="muted">(who / what / when, secret-free)</span></h2>
         <table><thead><tr><th>Time</th><th>Action</th><th>Result</th><th>From</th></tr></thead>
           <tbody>${arows || '<tr><td colspan="4" class="empty">No admin actions recorded this session.</td></tr>'}</tbody></table>`;
     }
@@ -1751,6 +1834,128 @@
       }
     }
 
+    // --- extension panels ----------------------------------------------------
+    // The core Console hosts extension panels generically: it discovers them via
+    // /api/console/panels and renders each panel's own server-provided read view
+    // (HTML fragment) plus, when editable, a validate and apply editor wired to the
+    // panel's /api/console/ext/{id}/ API. The core knows nothing of a panel's
+    // domain.
+    const extPanels = {}; // id -> descriptor
+    const extState = {};  // id -> loaded version token
+
+    async function loadPanels() {
+      try {
+        const res = await fetch('/api/console/panels');
+        if (!res.ok) return [];
+        const v = await res.json();
+        return v.panels || [];
+      } catch (_) { return []; }
+    }
+
+    function injectPanels(panels) {
+      if (!panels || !panels.length) return;
+      const nav = document.querySelector('nav');
+      const groups = {};
+      panels.forEach((p) => {
+        (groups[p.group || 'Extensions'] = groups[p.group || 'Extensions'] || []).push(p);
+      });
+      Object.keys(groups).forEach((group) => {
+        const list = groups[group].sort((a, b) => (a.order || 0) - (b.order || 0));
+        // Known groups are inserted INTO the existing flow (no extra section).
+        if (group === 'Configuration') {
+          const after = nav.querySelector('a[data-view="permeability"]');
+          list.forEach((p) => insertPanelLink(nav, p, after));
+          return;
+        }
+        if (group === 'Advanced') {
+          const after = nav.querySelector('a[data-view="settings"]');
+          list.forEach((p) => insertPanelLink(nav, p, after));
+          return;
+        }
+        if (group === 'Operations') {
+          // Insert into the existing Operations flow (after Reload History),
+          // not as a separate heading.
+          const after = nav.querySelector('a[data-view="reloads"]');
+          list.forEach((p) => insertPanelLink(nav, p, after));
+          return;
+        }
+        // Unknown groups keep explicit headings at the end.
+        const hdr = document.createElement('div');
+        hdr.className = 'nav-group';
+        hdr.textContent = group;
+        nav.appendChild(hdr);
+        list.forEach((p) => insertPanelLink(nav, p, null));
+      });
+    }
+
+    function panelLinkEl(p) {
+      extPanels[p.id] = p;
+      const a = document.createElement('a');
+      a.dataset.view = 'ext:' + p.id;
+      a.innerHTML = '<svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<path d="M12 2a5 5 0 0 0-5 5v3H5v12h14V10h-2V7a5 5 0 0 0-5-5zm3 8H9V7a3 3 0 0 1 6 0z"/></svg>' +
+        '<span>' + esc(p.title) + '</span>';
+      a.addEventListener('click', () => show('ext:' + p.id));
+      return a;
+    }
+
+    function insertPanelLink(nav, panel, afterNode) {
+      const link = panelLinkEl(panel);
+      if (!afterNode || !afterNode.parentNode) { nav.appendChild(link); return; }
+      let marker = afterNode.nextElementSibling;
+      while (marker && marker.tagName === 'A' && !marker.dataset.view.startsWith('ext:')) marker = marker.nextElementSibling;
+      afterNode.parentNode.insertBefore(link, marker);
+    }
+
+    async function extView(id) {
+      const section = document.getElementById('view');
+      const res = await fetch('/api/console/ext/' + encodeURIComponent(id));
+      if (!res.ok) { section.innerHTML = '<p class="empty">Panel unavailable (' + res.status + ')</p>'; return; }
+      const d = await res.json().catch(() => ({}));
+      extState[id] = d.version || '';
+      const title = esc(d.title || (extPanels[id] && extPanels[id].title) || id);
+      let editor = '';
+      if (d.editable) {
+        editor = rawEditor(id, d.raw);
+      }
+      section.innerHTML = `<h2>${title}</h2>${d.html || ''}${editor}`;
+    }
+
+    function rawEditor(id, raw) {
+      return `
+        <h2 style="margin-top:28px">Edit policy <span class="muted">(validate, atomic write, hot reload)</span></h2>
+        <p class="muted">Edits are validated fail-closed, written to the managed store, and hot-applied with no restart.</p>
+        <div style="display:flex;gap:12px;align-items:center;margin:12px 0">
+          <button data-act="ext-validate" data-ext="${attr(id)}">Validate</button>
+          <button class="primary" data-act="ext-apply" data-ext="${attr(id)}">Apply &amp; reload</button>
+        </div>
+        <textarea id="ext-raw" spellcheck="false"
+          style="width:100%;height:320px">${esc(raw || '')}</textarea>
+        <div id="ext-msg" style="margin-top:12px"></div>`;
+    }
+
+    async function extValidate(id) {
+      const raw = document.getElementById('ext-raw').value;
+      const res = await fetch('/api/console/ext/' + encodeURIComponent(id) + '/validate', { method: 'POST', body: raw });
+      const b = await res.json().catch(() => ({}));
+      const box = document.getElementById('ext-msg');
+      if (b.valid) box.innerHTML = '<span class="pill ok">valid</span>';
+      else box.innerHTML = '<span class="pill bad">invalid</span> <span class="muted">' + esc(b.error || 'validation failed') + '</span>';
+    }
+
+    async function extApply(id) {
+      const raw = document.getElementById('ext-raw').value;
+      const res = await fetch('/api/console/ext/' + encodeURIComponent(id) + '/apply',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw, version: extState[id] || '' }) });
+      const b = await res.json().catch(() => ({}));
+      if (b.version) extState[id] = b.version;
+      const box = document.getElementById('ext-msg');
+      if (b.applied) { await extView(id); const nb = document.getElementById('ext-msg'); if (nb) nb.innerHTML = '<span class="pill ok">applied</span> <span class="muted">written and hot-reloaded</span>'; }
+      else if (b.unchanged) box.innerHTML = '<span class="pill ok">no change</span> <span class="muted">' + esc(b.reason || '') + '</span>';
+      else box.innerHTML = '<span class="pill bad">rejected</span> <span class="muted">' + esc(b.reason || ('failed (' + res.status + ')')) + '</span>';
+    }
+
     const views = { dashboard, health, metrics, providers, pathways, secrets, callers, permeability, edit, declare, test, reloads, audit, settings };
 
     let currentView = 'dashboard';
@@ -1759,7 +1964,10 @@
       currentView = name;
       document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.dataset.view === name));
       const section = document.getElementById('view');
-      try { section.innerHTML = await views[name](); }
+      try {
+        if (name.indexOf('ext:') === 0) { await extView(name.slice(4)); }
+        else { section.innerHTML = await views[name](); }
+      }
       catch (e) { section.innerHTML = '<p class="empty">Failed to load: ' + esc(e.message) + '</p>'; }
       if (name === 'edit') {
         document.getElementById('edit-load').addEventListener('click', editLoad);
@@ -1795,6 +2003,7 @@
     document.getElementById('signout').addEventListener('click', signOut);
 
     renderHeader();
+    loadPanels().then(injectPanels);
     show('dashboard');
     setInterval(renderHeader, 5000);
   </script>

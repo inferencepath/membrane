@@ -15,18 +15,15 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// This file implements console.ConfigEditor over the store. Editing is fully
-// structured: an edit (raw YAML or a form) is parsed/validated with the daemon's
-// own loaders, mapped to store rows, written transactionally, and then the
-// serving Snapshot is rebuilt by an explicit reload (fail-closed, last-good).
-// Optimistic concurrency uses a per-kind content version (a hash of the kind's
-// canonical document), so a stale edit is rejected rather than clobbering a
-// concurrent change.
+// An edit, whether raw YAML or a form, is validated with the daemon loaders,
+// mapped to store rows, written in a transaction, and followed by a reload.
+// Each kind has a content version (a hash of its canonical document), and an
+// edit made against a stale version is rejected.
 
 // Kinds returns the editable config kinds.
 func (a *Adapter) Kinds() []string { return store.Kinds() }
 
-// Read returns the current canonical document for a kind plus its version token.
+// Read returns the current canonical document for a kind and its version.
 func (a *Adapter) Read(kind string) (console.EditFile, error) {
 	raw, err := a.st.Render(kind)
 	if err != nil {
@@ -35,7 +32,7 @@ func (a *Adapter) Read(kind string) (console.EditFile, error) {
 	return console.EditFile{Kind: kind, Raw: string(raw), Version: versionOf(raw)}, nil
 }
 
-// Validate parses raw bytes with the kind's loader (no write).
+// Validate parses raw with the loader for kind without writing anything.
 func (a *Adapter) Validate(kind string, raw []byte) console.ValidationResult {
 	if _, err := rowsFromRaw(kind, raw); err != nil {
 		return console.ValidationResult{Valid: false, Error: err.Error()}
@@ -43,8 +40,8 @@ func (a *Adapter) Validate(kind string, raw []byte) console.ValidationResult {
 	return console.ValidationResult{Valid: true}
 }
 
-// Apply validates raw bytes, checks the optimistic-concurrency version, writes
-// the mapped rows transactionally, and triggers a reload.
+// Apply validates raw, checks version against the current document, writes
+// the rows and triggers a reload.
 func (a *Adapter) Apply(kind string, raw []byte, version string) console.ApplyResult {
 	rows, err := rowsFromRaw(kind, raw)
 	if err != nil {
@@ -53,8 +50,8 @@ func (a *Adapter) Apply(kind string, raw []byte, version string) console.ApplyRe
 	return a.commit(kind, rows, version, raw)
 }
 
-// ValidateForm renders a structured form into the kind's rows and validates them
-// with the kind's loader (no write).
+// ValidateForm converts a form into rows and validates them with the loader
+// for kind without writing anything.
 func (a *Adapter) ValidateForm(kind string, form []byte) console.ValidationResult {
 	rows, _, err := a.rowsFromForm(kind, form)
 	if err != nil {
@@ -68,9 +65,8 @@ func (a *Adapter) ValidateForm(kind string, form []byte) console.ValidationResul
 	return console.ValidationResult{Valid: true}
 }
 
-// ApplyForm renders a structured form then runs the same validate → version
-// check → write → reload pipeline as Apply. Caller allowlist edits take a
-// dedicated path that never touches hashes.
+// ApplyForm converts a form into rows and then behaves like Apply. Caller
+// allowlist edits use SetCallerAllow and leave hashes untouched.
 func (a *Adapter) ApplyForm(kind string, form []byte, version string) console.ApplyResult {
 	rows, allowOnly, err := a.rowsFromForm(kind, form)
 	if err != nil {
@@ -80,14 +76,13 @@ func (a *Adapter) ApplyForm(kind string, form []byte, version string) console.Ap
 	if err != nil {
 		return console.ApplyResult{Rejected: true, Reason: err.Error()}
 	}
-	// Validate the candidate before any write.
 	if _, perr := rowsFromRaw(kind, raw); perr != nil {
 		return console.ApplyResult{Rejected: true, Reason: perr.Error()}
 	}
 
 	if allowOnly != nil {
-		// Caller allowlist-only edit: update allow rows without replacing callers
-		// (hashes untouched). Version check uses the callers document.
+		// Update allow rows only; the callers document still supplies the
+		// version.
 		if res, stop := a.checkVersion(kind, version); stop {
 			return res
 		}
@@ -102,13 +97,12 @@ func (a *Adapter) ApplyForm(kind string, form []byte, version string) console.Ap
 	return a.commit(kind, rows, version, raw)
 }
 
-// commit performs the version check, the transactional write for the kind, and
-// the reload. raw is the canonical document used for the new version token.
+// commit checks the version, writes rows and reloads. raw is the canonical
+// document for rows and is compared with the current one to detect a no-op.
 func (a *Adapter) commit(kind string, rows any, version string, raw []byte) console.ApplyResult {
 	if res, stop := a.checkVersion(kind, version); stop {
 		return res
 	}
-	// No-op short-circuit.
 	current, err := a.st.Render(kind)
 	if err != nil {
 		return console.ApplyResult{Rejected: true, Reason: err.Error()}
@@ -122,7 +116,8 @@ func (a *Adapter) commit(kind string, rows any, version string, raw []byte) cons
 	return a.finishReload(kind)
 }
 
-// checkVersion enforces optimistic concurrency against the current document.
+// checkVersion rejects the edit if version is set and differs from that of the
+// current document. The bool reports whether to stop.
 func (a *Adapter) checkVersion(kind, version string) (console.ApplyResult, bool) {
 	if version == "" {
 		return console.ApplyResult{}, false
@@ -141,8 +136,8 @@ func (a *Adapter) checkVersion(kind, version string) (console.ApplyResult, bool)
 	return console.ApplyResult{}, false
 }
 
-// finishReload triggers the daemon reload and maps its outcome, stamping the new
-// content version of the kind's document.
+// finishReload runs the daemon reload and maps its outcome, including the new
+// content version of the kind.
 func (a *Adapter) finishReload(kind string) console.ApplyResult {
 	newVer := ""
 	if raw, err := a.st.Render(kind); err == nil {
@@ -155,13 +150,13 @@ func (a *Adapter) finishReload(kind string) console.ApplyResult {
 	case res.Unchanged:
 		return console.ApplyResult{Unchanged: true, Reason: res.Reason, Version: newVer}
 	default:
-		// Reload rejected the candidate: last-good keeps serving. The store now
-		// differs from the active config; surface the secret-free reason.
+		// The reload was rejected and last-good keeps serving, so the store
+		// differs from the active config until the next successful reload.
 		return console.ApplyResult{Rejected: true, Reason: res.Reason, Version: newVer}
 	}
 }
 
-// writeRows dispatches the transactional write for a kind.
+// writeRows writes rows using the store writer for kind.
 func (a *Adapter) writeRows(kind string, rows any) error {
 	switch kind {
 	case store.KindProviders:
@@ -197,11 +192,8 @@ func renderRows(kind string, rows any) ([]byte, error) {
 	}
 }
 
-// --- raw YAML → rows (validated via the daemon's own parsers) ----------------
-
-// rowsFromRaw parses raw YAML for a kind with the daemon's loader and maps the
-// validated result to store rows. The parse enforces the same rules as the
-// serving path, so an invalid document is rejected before any write.
+// rowsFromRaw parses raw YAML with the daemon loader for kind and maps the
+// result to store rows. It applies the same rules as the serving path.
 func rowsFromRaw(kind string, raw []byte) (any, error) {
 	switch kind {
 	case store.KindProviders:
@@ -296,8 +288,8 @@ func permeabilityRows(spec permeability.Spec) []store.PermeabilityRow {
 	return out
 }
 
-// callerRowsFromYAML extracts caller rows (including hashes) from raw YAML. The
-// admit parser has already validated the document; this read only maps fields.
+// callerRowsFromYAML maps raw YAML to caller rows, including hashes. The
+// caller must have validated raw with admit.ParseStore first.
 func callerRowsFromYAML(raw []byte) ([]store.CallerRow, error) {
 	var doc struct {
 		Callers []struct {

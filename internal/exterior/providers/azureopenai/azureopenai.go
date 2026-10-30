@@ -1,8 +1,8 @@
-// Package azureopenai implements an Azure OpenAI Chat Completions Provider
-// adapter. Azure addresses a model by a deployment name in the URL path and
-// authenticates with the api-key header. The adapter builds its request ONLY
-// from a neutral providers.Request plus the injected EgressIdentity — it has no
-// access to Caller identity, the Caller Key, or the Reveal flag.
+// Package azureopenai implements a Provider adapter for Azure OpenAI. Azure
+// selects the model by a deployment name in the URL path and authenticates with
+// the api-key header or an Entra bearer token. Requests are built only from a
+// providers.Request and the EgressIdentity; the adapter has no access to Caller
+// identity, the Caller Key, or the Reveal flag.
 package azureopenai
 
 import (
@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// defaultAPIVersion pins the Azure OpenAI REST API version. Not caller identity.
+	// defaultAPIVersion pins the Azure OpenAI REST API version.
 	defaultAPIVersion = "2024-02-01"
 	// defaultIdleTimeout bounds inactivity on a streaming response when unset.
 	defaultIdleTimeout = 30 * time.Second
@@ -37,8 +37,8 @@ type Adapter struct {
 	apiVersion  string
 	idleTimeout time.Duration
 	client      *http.Client
-	// tokenSource, when set, mints an Entra bearer token per request (managed
-	// identity auth) instead of using the api-key header.
+	// tokenSource, when set, supplies an Entra bearer token per request in place
+	// of the api-key header.
 	tokenSource func(context.Context) (string, error)
 }
 
@@ -46,15 +46,15 @@ type Adapter struct {
 type Option func(*Adapter)
 
 // WithTokenSource authenticates with an Entra bearer token from the given source
-// (e.g. a managed identity) rather than the static api-key. The source is called
-// per request so short-lived tokens refresh transparently.
+// (for example a managed identity) instead of the api-key header. The source is
+// called per request so short-lived tokens can refresh.
 func WithTokenSource(fn func(context.Context) (string, error)) Option {
 	return func(a *Adapter) { a.tokenSource = fn }
 }
 
 // New returns an Azure OpenAI adapter for the given resource base URL and
-// deployment name. idleTimeout bounds inactivity on streaming responses
-// (defaulted if <= 0). The reported ID is "azure-openai".
+// deployment name. idleTimeout bounds inactivity on streaming responses; a
+// value <= 0 selects the default. The reported ID is "azure-openai".
 func New(baseURL, deployment string, idleTimeout time.Duration, opts ...Option) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
@@ -86,16 +86,14 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 	for k, v := range req.Payload {
 		body[k] = v
 	}
-	// Azure selects the model via the deployment in the path; a model field is
-	// unnecessary.
+	// The deployment in the path selects the model.
 	delete(body, "model")
 	if stream {
 		body["stream"] = true
 	} else {
 		delete(body, "stream")
 	}
-	// Neutral→OpenAI tool-schema mapping (Azure speaks the OpenAI tool format).
-	// No-op for payloads without tools / messages without tool_calls.
+	// Azure uses the OpenAI tool format.
 	if raw, ok := body["tools"]; ok {
 		body["tools"] = oaitools.Tools(raw)
 	}
@@ -110,9 +108,8 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	if err != nil {
 		return nil, err
 	}
-	// Only the Egress Identity and content headers are attached. No caller/org
-	// identity, Caller Key, forwarding, or correlation headers. With a managed
-	// identity, a short-lived Entra bearer token replaces the api-key.
+	// Only the Egress Identity and content headers are sent: no Caller identity,
+	// Caller Key, forwarding, or correlation headers.
 	if a.tokenSource != nil {
 		token, terr := a.tokenSource(ctx)
 		if terr != nil {
@@ -183,8 +180,8 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 		return types.CanonicalResponse{}, errors.New("azureopenai: response contained no choices")
 	}
 	c := cr.Choices[0]
-	// Azure does not echo a model name reliably; surface the deployment-neutral
-	// logical model from the request so Reveal never leaks the deployment.
+	// Azure does not always return a model name. Fall back to the requested
+	// model rather than exposing the deployment name.
 	model := cr.Model
 	if model == "" {
 		model = req.Model
@@ -217,8 +214,7 @@ type streamChunk struct {
 }
 
 // Stream implements providers.Provider for the streaming (SSE) path. Azure
-// emits OpenAI-compatible chunks (data: {choices:[{delta:{content},...}]}),
-// terminated by a `data: [DONE]` sentinel.
+// sends OpenAI-compatible chunks terminated by "data: [DONE]".
 func (a *Adapter) Stream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.StreamChunk) error) error {
 	body, err := a.buildBody(req, true)
 	if err != nil {

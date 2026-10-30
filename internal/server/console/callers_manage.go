@@ -16,8 +16,8 @@ func (c *Console) callersGuard(w http.ResponseWriter) (CallerManager, bool) {
 	return c.cfg.Callers, true
 }
 
-// handleCallerCreate creates (or updates) a Caller Key: the app layer hashes the
-// secret to SHA-256 and persists only the hash. The response is secret-free.
+// handleCallerCreate creates or updates a Caller Key. Only the secret's hash is
+// persisted, and the response carries no secret.
 func (c *Console) handleCallerCreate(w http.ResponseWriter, r *http.Request) {
 	mgr, ok := c.callersGuard(w)
 	if !ok {

@@ -384,7 +384,7 @@ func BuildImagesRec(endpoint string, logger *slog.Logger, rec metrics.Recorder, 
 
 // opSnapshot wires a single-target chat.Snapshot for an operation Pathway from
 // the given permeability YAML, pathway name, and operation. It is the shared
-// scaffold behind the operation harness builders.
+// scaffold behind the Tier-3 harness builders.
 func opSnapshot(endpoint, permYAML, pathway string, op types.Operation) (*chat.Snapshot, error) {
 	spec, err := permeability.Parse([]byte(permYAML))
 	if err != nil {
@@ -417,7 +417,7 @@ func opSnapshot(endpoint, permYAML, pathway string, op types.Operation) (*chat.S
 }
 
 // ModerationsPathway, SpeechPathway, and TranscriptionPathway are the bound
-// Pathway names for the operation harness builders.
+// Pathway names for the Tier-3 harness builders.
 const (
 	ModerationsPathway   = "moderate"
 	SpeechPathway        = "speak"

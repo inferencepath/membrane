@@ -1,8 +1,5 @@
-// This file extends the Gemini adapter with operation-breadth support:
-// embeddings via the Gemini `embedContent` / `batchEmbedContents` endpoints. As
-// with chat, the request is built ONLY from the neutral providers.Request plus
-// the injected EgressIdentity — no Caller identity, Caller Key, or Reveal flag is
-// ever accessible here.
+// Embeddings use the embedContent and batchEmbedContents endpoints.
+
 package gemini
 
 import (
@@ -14,8 +11,8 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// embedInputs normalizes the allowlisted `input` (a string or an array of
-// strings) into an ordered list of texts to embed.
+// embedInputs normalizes the input field, a string or an array of strings, into
+// an ordered list of texts to embed.
 func embedInputs(raw any) []string {
 	switch v := raw.(type) {
 	case string:
@@ -38,9 +35,8 @@ func contentPart(text string) map[string]any {
 	return map[string]any{"parts": []any{map[string]any{"text": text}}}
 }
 
-// Embeddings implements providers.EmbeddingsProvider using Gemini's
-// embedContent (single input) / batchEmbedContents (multiple) endpoints, and
-// normalizes the vectors to the provider-neutral CanonicalEmbeddings.
+// Embeddings implements providers.EmbeddingsProvider. A single input uses
+// embedContent and multiple inputs use batchEmbedContents.
 func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalEmbeddings, error) {
 	inputs := embedInputs(req.Payload["input"])
 	if len(inputs) == 0 {

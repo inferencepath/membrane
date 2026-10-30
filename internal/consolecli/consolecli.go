@@ -1,12 +1,10 @@
-// Package consolecli is the `deck`-equivalent command-line client for Membrane's
-// declarative configuration. It is a thin HTTP client of the Membrane Console's
-// Admin API (export/diff/apply) — it never touches the embedded store directly,
-// so the daemon stays the single store writer and the CLI works equally against
-// a local or a remote (token-authorized) console.
+// Package consolecli is a command-line client for Membrane's declarative
+// configuration. It talks to the Console Admin API (export, diff, apply) and
+// never opens the store, so the daemon remains its only writer and the CLI
+// works against a local or remote Console.
 //
-// Secrets stay by reference: the admin token is resolved from a reference
-// (env:/file:) and is never printed; the bundle the CLI reads/writes carries
-// credential references and caller hashes only, never values.
+// The admin token is resolved from an env: or file: reference and never
+// printed. Bundles carry credential references and caller hashes, not values.
 package consolecli
 
 import (
@@ -21,7 +19,7 @@ import (
 )
 
 // DefaultConsoleURL is the loopback Admin API the daemon binds by default.
-const DefaultConsoleURL = "http://127.0.0.1:7474"
+const DefaultConsoleURL = "http://127.0.0.1:8300"
 
 const (
 	pathExport = "/api/console/config/export"
@@ -36,7 +34,7 @@ type Client struct {
 	HTTP    *http.Client
 }
 
-// NewClient returns a Client with a sane default timeout.
+// NewClient returns a Client with a default timeout.
 func NewClient(baseURL, token string) *Client {
 	return &Client{BaseURL: baseURL, Token: token, HTTP: &http.Client{Timeout: 15 * time.Second}}
 }
@@ -59,7 +57,7 @@ func (c *Client) do(method, path string, body []byte) (*http.Response, error) {
 	return c.HTTP.Do(req)
 }
 
-// Export fetches the live configuration bundle and its content version token.
+// Export fetches the live configuration bundle and its version token.
 func (c *Client) Export() (raw []byte, version string, err error) {
 	resp, err := c.do(http.MethodGet, pathExport, nil)
 	if err != nil {
@@ -74,7 +72,7 @@ func (c *Client) Export() (raw []byte, version string, err error) {
 }
 
 // Diff validates a candidate bundle against the live store and returns the
-// per-kind change set (no write).
+// per-kind change set without writing.
 func (c *Client) Diff(bundle []byte) (console.BundleDiff, error) {
 	resp, err := c.do(http.MethodPost, pathDiff, bundle)
 	if err != nil {
@@ -92,8 +90,8 @@ func (c *Client) Diff(bundle []byte) (console.BundleDiff, error) {
 	return diff, nil
 }
 
-// Apply validates a candidate bundle, enforces the optimistic version, writes
-// atomically, and triggers a reload. version may be empty to skip the check.
+// Apply validates a candidate bundle, checks version, writes atomically, and
+// triggers a reload. An empty version skips the check.
 func (c *Client) Apply(bundle []byte, version string) (console.ApplyResult, error) {
 	body, err := json.Marshal(struct {
 		Raw     string `json:"raw"`
@@ -118,8 +116,8 @@ func (c *Client) Apply(bundle []byte, version string) (console.ApplyResult, erro
 	return res, nil
 }
 
-// statusError turns a non-200 Admin API response into a secret-free error,
-// surfacing the server's JSON {"error": "..."} message when present.
+// statusError turns a non-200 Admin API response into an error, using the
+// server's JSON "error" message when present.
 func statusError(op string, code int, body []byte) error {
 	var e struct {
 		Error string `json:"error"`

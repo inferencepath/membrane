@@ -1,11 +1,8 @@
-// This file extends the Bedrock adapter with the operation-breadth
-// methods its models natively support: embeddings (Titan/Cohere), rerank
-// (Cohere), and image generation (Titan Image). Each builds its request ONLY
-// from the neutral providers.Request plus the injected EgressIdentity (AWS
-// SigV4 or Bedrock bearer token) — no Caller identity, Caller Key, or Reveal
-// flag is accessible here. Bedrock selects the model via the path (/model/{id}
-// /invoke), so the body carries neither a model name nor a stream flag, and the
-// logical model surfaced on Reveal is the request's resolved model.
+// Non-chat operations use InvokeModel: embeddings (Titan, Cohere), rerank
+// (Cohere), and image generation (Titan Image). The model is selected by the
+// /model/{id}/invoke path, so the body carries no model or stream field, and the
+// reported model is the request's resolved model.
+
 package bedrock
 
 import (
@@ -18,8 +15,7 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// opBody copies the allowlisted payload, dropping the path-selected model and the
-// stream flag (these operations are non-streaming over /invoke).
+// opBody copies the allowlisted payload without the model and stream fields.
 func opBody(req providers.Request) ([]byte, error) {
 	body := make(map[string]any, len(req.Payload))
 	for k, v := range req.Payload {
@@ -54,10 +50,9 @@ func (a *Adapter) invoke(ctx context.Context, req providers.Request, id provider
 	return raw, nil
 }
 
-// Embeddings implements providers.EmbeddingsProvider. It accepts both the Titan
-// shape (single "embedding" vector + "inputTextTokenCount") and the Cohere shape
-// ("embeddings" as an array of vectors), passing vectors through as-is so the
-// operation is encoding-agnostic.
+// Embeddings implements providers.EmbeddingsProvider. It accepts the Titan
+// shape (one "embedding" vector and "inputTextTokenCount") and the Cohere shape
+// (an "embeddings" array). Vectors pass through as-is, whatever their encoding.
 func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalEmbeddings, error) {
 	raw, err := a.invoke(ctx, req, id)
 	if err != nil {
@@ -103,7 +98,8 @@ func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id prov
 }
 
 // Rerank implements providers.RerankProvider using the Cohere-on-Bedrock rerank
-// response schema (results with index + relevance_score; optional document text).
+// response schema: results with index, relevance_score, and optional document
+// text.
 func (a *Adapter) Rerank(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalRerank, error) {
 	raw, err := a.invoke(ctx, req, id)
 	if err != nil {

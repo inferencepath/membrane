@@ -7,22 +7,17 @@ import (
 	"strconv"
 )
 
-// testChatRequest is the operator's Test Pathway payload: a Caller Key and
-// the raw logical chat request (pathway/messages/…/reveal/stream). The Caller
-// Key is operator-supplied and forwarded verbatim; the console never stores or
-// logs it.
+// testChatRequest is the Test Pathway payload: a Caller Key and the raw logical
+// chat request. The key is forwarded as given and never stored or logged.
 type testChatRequest struct {
 	CallerKey string          `json:"callerKey"`
 	Request   json.RawMessage `json:"request"`
 }
 
-// handleTestChat proxies a sample request to the data-plane /v1/chat using an
-// operator-supplied Caller Key. The console acts purely as a client of
-// the egress path — it never constructs a SanitizedRequest, never mounts the
-// egress handler, and relays the upstream response verbatim (including the
-// generic 403 for an unauthorized key and provider-neutral errors). Reveal and
-// streaming are honored by the data plane; the console just streams bytes
-// through. The admin-action audit records only who/what/when (never the key).
+// handleTestChat proxies a sample request to the data-plane /v1/chat with an
+// operator-supplied Caller Key. The console is an ordinary client of the
+// egress path: it relays the response as is, including the generic 403 and
+// streamed bodies. The admin audit records the action but not the key.
 func (c *Console) handleTestChat(w http.ResponseWriter, r *http.Request) {
 	if c.cfg.ChatBaseURL == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -57,8 +52,8 @@ func (c *Console) handleTestChat(w http.ResponseWriter, r *http.Request) {
 	up.Header.Set("Content-Type", "application/json")
 	up.Header.Set("Authorization", "Bearer "+tr.CallerKey)
 
-	// No client Timeout: streaming responses may be long-lived; cancellation is
-	// bound to the request context instead.
+	// No client timeout, since streams may be long-lived; the request context
+	// handles cancellation.
 	resp, err := http.DefaultClient.Do(up)
 	if err != nil {
 		c.recordAdmin(r, "test:chat", "error")

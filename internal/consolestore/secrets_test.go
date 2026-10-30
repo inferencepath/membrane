@@ -79,10 +79,8 @@ func TestSecretAdapterReferencedFlagAndDeleteGuard(t *testing.T) {
 	}
 }
 
-// TestBundleExportExcludesSealedValues proves the GitOps boundary: a declarative
-// bundle export carries credential REFERENCES (incl. secret:<name>) but never the
-// sealed plaintext value. Sealed values live only in membrane.db (encrypted) and
-// are backed up separately from the version-controlled bundle.
+// TestBundleExportExcludesSealedValues checks that an exported bundle holds
+// secret:<name> references but not the sealed values.
 func TestBundleExportExcludesSealedValues(t *testing.T) {
 	const sealedValue = "sk-BUNDLE-LEAK-CANARY-123"
 	sa, st := newSecretAdapter(t)
@@ -110,7 +108,7 @@ func TestBundleExportExcludesSealedValues(t *testing.T) {
 	if strings.Contains(bundle.Raw, sealedValue) {
 		t.Fatalf("SEALED VALUE LEAK: bundle export contains the plaintext value:\n%s", bundle.Raw)
 	}
-	// The reference itself must still be present (it is not a secret).
+	// The reference itself is not a secret and must be present.
 	if !strings.Contains(bundle.Raw, "secret:openai-main") {
 		t.Fatalf("bundle should carry the secret: reference, got:\n%s", bundle.Raw)
 	}

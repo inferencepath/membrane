@@ -1,34 +1,31 @@
 package types
 
-// This file defines the logical, provider-agnostic `responses` API DTOs and the
-// canonical inward representation. The Responses operation is agentic/
-// tool-capable and supports both non-streaming and SSE streaming, mirroring
-// chat's incremental-relay and cancellation guarantees. As with the other
-// operations these are Interior-only shapes: the Caller Key is carried in the
-// request transport (Authorization header), never in the body, and the Reveal
-// flag is an Interior-only control field that never crosses the Membrane.
+// Responses API shapes. The Responses operation supports tools and both plain
+// and SSE streaming replies, with the same relay and cancellation behavior as
+// chat.
 
-// ResponsesRequest is the inbound logical responses request. Input is a string
-// prompt or an array of structured input items (validated by the handler).
+// ResponsesRequest is the inbound responses request. Input is a string prompt
+// or an array of structured input items, validated by the handler.
 type ResponsesRequest struct {
 	Pathway string `json:"pathway"`
 	Input   any    `json:"input"`
 	// Instructions is an optional top-level system instruction.
 	Instructions string `json:"instructions,omitempty"`
-	// Tools and ToolChoice declare and steer tool/function use. They are opaque,
-	// provider-neutral structures carried through the Scrub by allowlist.
+	// Tools and ToolChoice declare and steer tool use. They are opaque and
+	// pass the Scrub only when allowlisted.
 	Tools      []map[string]any `json:"tools,omitempty"`
 	ToolChoice any              `json:"tool_choice,omitempty"`
-	// Sampling / limit controls.
+	// Sampling and length controls.
 	Temperature     *float64 `json:"temperature,omitempty"`
 	MaxOutputTokens *int     `json:"max_output_tokens,omitempty"`
 	TopP            *float64 `json:"top_p,omitempty"`
 	// Stream requests an SSE stream of incremental events.
 	Stream bool `json:"stream,omitempty"`
-	// Reveal is the Interior-only opt-in to receive provider/model.
+	// Reveal asks for the provider and model in the response. It does not
+	// cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
@@ -39,10 +36,9 @@ type ResponsesUsage struct {
 	TotalTokens  int `json:"total_tokens"`
 }
 
-// CanonicalResponses is the provider-agnostic responses result assembled on the
-// inward (non-streaming) path. Output items are passed through provider-neutral.
-// Provider and Model are surfaced only when the Reveal flag was set (gated by the
-// inbound Permeability on_reveal set).
+// CanonicalResponses is the non-streaming responses result assembled on the
+// inward path. Provider and Model reach the Caller only on Reveal, gated by the
+// inbound Permeability on_reveal set.
 type CanonicalResponses struct {
 	PathwayID    PathwayID
 	Output       []map[string]any
@@ -52,8 +48,8 @@ type CanonicalResponses struct {
 	Model        string
 }
 
-// ResponsesResponse is the Caller-facing, provider-neutral responses response.
-// Provider and Model are populated only when the Caller set the Reveal flag.
+// ResponsesResponse is the responses reply returned to the Caller. Provider and
+// Model are set only when the Caller requested Reveal.
 type ResponsesResponse struct {
 	Pathway      string           `json:"pathway"`
 	Output       []map[string]any `json:"output"`
@@ -63,10 +59,9 @@ type ResponsesResponse struct {
 	Model        string           `json:"model,omitempty"`
 }
 
-// ResponsesStreamChunk is one incremental streaming event relayed from a Provider
-// across the Membrane. It is provider-neutral: Type names the event (e.g.
-// "output_text.delta"), Delta carries incremental text, Item carries a structured
-// output item, and Done marks the end of the stream.
+// ResponsesStreamChunk is one streaming event relayed from a Provider. Type
+// names the event, such as "output_text.delta"; Delta carries incremental text,
+// Item a structured output item, and Done marks the end of the stream.
 type ResponsesStreamChunk struct {
 	Type  string
 	Delta string

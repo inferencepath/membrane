@@ -2,27 +2,25 @@ package types
 
 import "fmt"
 
-// Operation is the kind of egress work a Pathway performs. Where a Pathway names
-// intent and routing, an Operation fixes the request/response shape, the egress
-// route, the per-operation Permeability vocabulary, and the handler. It is a
-// closed, versioned enum; an absent Operation defaults to OperationChat for
-// backward compatibility.
+// Operation is the kind of egress work a Pathway performs. It determines the
+// request and response shapes, the egress route, the Permeability vocabulary,
+// and the handler. The set is closed; an empty Operation means OperationChat.
 type Operation string
 
 const (
-	// OperationChat is the default operation: anonymized Chat Completions.
+	// OperationChat is the default operation: chat completions.
 	OperationChat Operation = "chat"
 	// OperationEmbeddings turns text into numeric vectors.
 	OperationEmbeddings Operation = "embeddings"
 	// OperationRerank orders documents by relevance to a query.
 	OperationRerank Operation = "rerank"
-	// OperationResponses is the agentic/tool-capable Responses operation.
+	// OperationResponses is the tool-capable Responses operation.
 	OperationResponses Operation = "responses"
 	// OperationImageGeneration produces image(s) from a prompt.
 	OperationImageGeneration Operation = "image_generation"
-	// OperationAudioTranscription is speech-to-text (multipart audio in).
+	// OperationAudioTranscription is speech-to-text from a multipart upload.
 	OperationAudioTranscription Operation = "audio_transcription"
-	// OperationAudioSpeech is text-to-speech (binary audio out).
+	// OperationAudioSpeech is text-to-speech returning binary audio.
 	OperationAudioSpeech Operation = "audio_speech"
 	// OperationModerations classifies input against moderation categories.
 	OperationModerations Operation = "moderations"
@@ -31,8 +29,8 @@ const (
 // DefaultOperation is the operation assumed when a Pathway declares none.
 const DefaultOperation = OperationChat
 
-// operationRoutes maps each Operation to its canonical egress route. It is the
-// single source of truth for route-per-operation dispatch.
+// operationRoutes maps each Operation to its egress route. It also defines the
+// set of valid operations.
 var operationRoutes = map[Operation]string{
 	OperationChat:               "/v1/chat",
 	OperationEmbeddings:         "/v1/embeddings",
@@ -44,7 +42,7 @@ var operationRoutes = map[Operation]string{
 	OperationModerations:        "/v1/moderations",
 }
 
-// AllOperations returns the closed set of operations in a stable, tier order.
+// AllOperations returns every operation in a stable order.
 func AllOperations() []Operation {
 	return []Operation{
 		OperationChat,
@@ -58,8 +56,8 @@ func AllOperations() []Operation {
 	}
 }
 
-// ParseOperation validates and normalizes a raw operation string. An empty
-// string yields DefaultOperation (chat); any unrecognized value fails closed.
+// ParseOperation parses an operation string. An empty string yields
+// DefaultOperation; an unknown value is an error.
 func ParseOperation(s string) (Operation, error) {
 	if s == "" {
 		return DefaultOperation, nil
@@ -71,14 +69,14 @@ func ParseOperation(s string) (Operation, error) {
 	return op, nil
 }
 
-// Valid reports whether the Operation is a recognized member of the enum.
+// Valid reports whether o is a known operation.
 func (o Operation) Valid() bool {
 	_, ok := operationRoutes[o]
 	return ok
 }
 
-// Route returns the canonical egress route for the Operation (e.g. "/v1/chat").
-// Returns "" for an unrecognized operation.
+// Route returns the egress route for o, such as "/v1/chat", or "" if o is
+// unknown.
 func (o Operation) Route() string {
 	return operationRoutes[o]
 }

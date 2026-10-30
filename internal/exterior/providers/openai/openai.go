@@ -1,7 +1,6 @@
-// Package openai implements an OpenAI-compatible Chat Completions Provider
-// adapter. It targets OpenAI and OpenAI-compatible self-hosted servers (vLLM,
-// Ollama) by base URL. The adapter builds its request ONLY from a neutral
-// providers.Request plus the injected EgressIdentity — it has no access to Caller
+// Package openai implements a Provider adapter for OpenAI and OpenAI-compatible
+// servers such as vLLM and Ollama. Requests are built only from a
+// providers.Request and the EgressIdentity; the adapter has no access to Caller
 // identity, the Caller Key, or the Reveal flag.
 package openai
 
@@ -44,7 +43,7 @@ type Adapter struct {
 }
 
 // New returns an adapter for the given Provider id and base URL. idleTimeout
-// bounds inactivity on streaming responses (defaulted if <= 0).
+// bounds inactivity on streaming responses; a value <= 0 selects the default.
 func New(id types.ProviderID, baseURL string, idleTimeout time.Duration) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
@@ -60,9 +59,8 @@ func New(id types.ProviderID, baseURL string, idleTimeout time.Duration) *Adapte
 // ID implements providers.Provider.
 func (a *Adapter) ID() types.ProviderID { return a.id }
 
-// buildBody constructs the request body from the allowlisted payload plus the
-// resolved model and streaming flag. Only fields already present in the payload
-// (i.e. outbound-permeable) are carried; nothing else is added.
+// buildBody builds the request body from the allowlisted payload plus the
+// resolved model and stream flag. No other fields are added.
 func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 	body := make(map[string]any, len(req.Payload)+2)
 	for k, v := range req.Payload {
@@ -73,9 +71,8 @@ func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-// buildChatBody is the chat-path body builder. It is buildBody plus the neutral→
-// OpenAI tool-schema mapping (tools and assistant tool_calls). Messages without
-// tool_calls and payloads without tools serialize identically to buildBody.
+// buildChatBody is buildBody plus mapping of tools and assistant tool_calls to
+// the OpenAI schema. Without tools its output matches buildBody.
 func (a *Adapter) buildChatBody(req providers.Request) ([]byte, error) {
 	body := make(map[string]any, len(req.Payload)+2)
 	for k, v := range req.Payload {
@@ -97,8 +94,8 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	if err != nil {
 		return nil, err
 	}
-	// Only the Egress Identity and content negotiation headers are attached. No
-	// caller/org identity, Caller Key, forwarding, or correlation headers.
+	// Only the Egress Identity and content negotiation headers are sent: no
+	// Caller identity, Caller Key, forwarding, or correlation headers.
 	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
 	httpReq.Header.Set("Content-Type", "application/json")
 	if stream {
@@ -109,11 +106,9 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	return httpReq, nil
 }
 
-// chatCompletionsURL accepts either endpoint style:
-//   - https://api.openai.com
-//   - https://api.openai.com/v1
-//
-// and always resolves to one canonical completions URL without duplicating /v1.
+// chatCompletionsURL accepts a base URL with or without a trailing /v1, such as
+// https://api.openai.com or https://api.openai.com/v1, and does not duplicate
+// /v1.
 func chatCompletionsURL(base string) string {
 	b := strings.TrimRight(base, "/")
 	if strings.HasSuffix(b, "/v1") {
@@ -122,8 +117,7 @@ func chatCompletionsURL(base string) string {
 	return b + "/v1" + chatCompletionsPath
 }
 
-// embeddingsURL mirrors chatCompletionsURL for the /embeddings endpoint,
-// accepting either a bare base or one already ending in /v1 without duplicating.
+// embeddingsURL is chatCompletionsURL for the /embeddings endpoint.
 func embeddingsURL(base string) string {
 	b := strings.TrimRight(base, "/")
 	if strings.HasSuffix(b, "/v1") {
@@ -132,9 +126,8 @@ func embeddingsURL(base string) string {
 	return b + "/v1" + embeddingsPath
 }
 
-// buildEmbeddingsBody constructs the embeddings request body from the allowlisted
-// payload plus the resolved model. Unlike buildBody it never sets "stream":
-// embeddings is a non-streaming operation.
+// buildEmbeddingsBody builds a request body from the allowlisted payload plus
+// the resolved model. Unlike buildBody it does not set "stream".
 func (a *Adapter) buildEmbeddingsBody(req providers.Request) ([]byte, error) {
 	body := make(map[string]any, len(req.Payload)+1)
 	for k, v := range req.Payload {
@@ -156,10 +149,8 @@ type oaEmbeddingsResponse struct {
 	} `json:"usage"`
 }
 
-// Embeddings implements providers.EmbeddingsProvider. It builds its request ONLY
-// from the neutral Request (the allowlisted payload) plus the EgressIdentity, and
-// passes each embedding through as-is ([]float64 for float, base64 string
-// otherwise) so the operation is encoding-format agnostic.
+// Embeddings implements providers.EmbeddingsProvider. Each embedding passes
+// through as-is: a float array or a base64 string, depending on encoding_format.
 func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalEmbeddings, error) {
 	body, err := a.buildEmbeddingsBody(req)
 	if err != nil {
@@ -210,8 +201,7 @@ func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id prov
 	}, nil
 }
 
-// rerankURL mirrors chatCompletionsURL for the /rerank endpoint, accepting
-// either a bare base or one already ending in /v1 without duplicating.
+// rerankURL is chatCompletionsURL for the /rerank endpoint.
 func rerankURL(base string) string {
 	b := strings.TrimRight(base, "/")
 	if strings.HasSuffix(b, "/v1") {
@@ -234,12 +224,10 @@ type oaRerankResponse struct {
 	} `json:"usage"`
 }
 
-// Rerank implements providers.RerankProvider. It builds its request ONLY from the
-// neutral Request (the allowlisted payload: query/documents/top_n/
-// return_documents) plus the EgressIdentity. The response follows the widely
-// adopted Cohere/Jina-style rerank schema served by OpenAI-compatible endpoints.
+// Rerank implements providers.RerankProvider. The response follows the
+// Cohere and Jina rerank schema that OpenAI-compatible servers use.
 func (a *Adapter) Rerank(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalRerank, error) {
-	body, err := a.buildEmbeddingsBody(req) // same shape: payload + model, no stream
+	body, err := a.buildEmbeddingsBody(req) // payload and model, no stream
 	if err != nil {
 		return types.CanonicalRerank{}, fmt.Errorf("openai: marshal request: %w", err)
 	}
@@ -283,7 +271,7 @@ func (a *Adapter) Rerank(ctx context.Context, req providers.Request, id provider
 	}, nil
 }
 
-// responsesURL mirrors chatCompletionsURL for the /responses endpoint.
+// responsesURL is chatCompletionsURL for the /responses endpoint.
 func responsesURL(base string) string {
 	b := strings.TrimRight(base, "/")
 	if strings.HasSuffix(b, "/v1") {
@@ -303,9 +291,8 @@ type oaResponsesResponse struct {
 	} `json:"usage"`
 }
 
-// Responses implements providers.ResponsesProvider for the non-streaming path. It
-// builds its request ONLY from the neutral Request (allowlisted payload) plus the
-// EgressIdentity, and passes output items through provider-neutral.
+// Responses implements providers.ResponsesProvider for the non-streaming path.
+// Output items pass through unchanged.
 func (a *Adapter) Responses(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalResponses, error) {
 	body, err := a.buildBody(providers.Request{Model: req.Model, Payload: req.Payload, Stream: false})
 	if err != nil {
@@ -365,9 +352,8 @@ type oaResponsesStreamChunk struct {
 }
 
 // ResponsesStream implements providers.ResponsesProvider for the streaming (SSE)
-// path. It relays each incremental event via emit and applies the same idle
-// timeout as the chat Stream: if no data arrives within idleTimeout, the upstream
-// request is cancelled and ErrUpstreamTimeout is returned.
+// path. It relays each event through emit. If no data arrives within
+// idleTimeout, it cancels the upstream request and returns ErrUpstreamTimeout.
 func (a *Adapter) ResponsesStream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.ResponsesStreamChunk) error) error {
 	body, err := a.buildBody(providers.Request{Model: req.Model, Payload: req.Payload, Stream: true})
 	if err != nil {
@@ -439,7 +425,7 @@ func (a *Adapter) ResponsesStream(ctx context.Context, req providers.Request, id
 	}
 }
 
-// imagesGenerationsURL mirrors chatCompletionsURL for the /images/generations
+// imagesGenerationsURL is chatCompletionsURL for the /images/generations
 // endpoint.
 func imagesGenerationsURL(base string) string {
 	b := strings.TrimRight(base, "/")
@@ -456,10 +442,8 @@ type oaImageResponse struct {
 	} `json:"data"`
 }
 
-// Images implements providers.ImageProvider. It builds its request ONLY from the
-// neutral Request (the allowlisted payload: prompt/n/size/quality/style/
-// response_format) plus the EgressIdentity, and passes image URLs/base64 payloads
-// through provider-neutral. Usage reports the number of images produced.
+// Images implements providers.ImageProvider. Image URLs and base64 data pass
+// through unchanged; usage reports the number of images.
 func (a *Adapter) Images(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalImage, error) {
 	body, err := a.buildEmbeddingsBody(req) // payload + model, no stream
 	if err != nil {
@@ -518,8 +502,7 @@ type oaModerationsResponse struct {
 	} `json:"results"`
 }
 
-// Moderate implements providers.ModerationsProvider. It builds its request ONLY
-// from the neutral Request (allowlisted payload: input) plus the EgressIdentity.
+// Moderate implements providers.ModerationsProvider.
 func (a *Adapter) Moderate(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalModerations, error) {
 	body, err := a.buildEmbeddingsBody(req) // payload + model, no stream
 	if err != nil {
@@ -560,11 +543,10 @@ type oaTranscriptionResponse struct {
 	Segments []map[string]any `json:"segments"`
 }
 
-// Transcribe implements providers.TranscriptionProvider. It RECONSTRUCTS the
-// outbound multipart from the allowlisted payload: the "file" bytes (sent with a
-// fixed generic filename — the client filename never crosses) plus the model and
-// any other allowlisted form fields. It never forwards the client's original
-// multipart headers or extra parts.
+// Transcribe implements providers.TranscriptionProvider. It builds a new
+// multipart body from the model and the allowlisted payload. The file is sent
+// under a fixed generic filename, so the client's filename, multipart headers,
+// and extra parts are never forwarded.
 func (a *Adapter) Transcribe(ctx context.Context, req providers.Request, id providers.EgressIdentity) (types.CanonicalTranscription, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
@@ -641,12 +623,12 @@ func speechContentType(format string) string {
 	}
 }
 
-// Speech implements providers.SpeechProvider. It POSTs the allowlisted payload and
-// relays the binary audio body incrementally via emit, applying the same idle
-// timeout as the chat Stream. The first emitted chunk is a Head carrying the
-// Content-Type and Provider/Model (the handler gates Provider/Model by Reveal).
+// Speech implements providers.SpeechProvider. It relays the audio body through
+// emit and applies the streaming idle timeout. The first chunk is a Head
+// carrying the Content-Type, Provider, and Model; the handler shows Provider and
+// Model only on Reveal.
 func (a *Adapter) Speech(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.SpeechChunk) error) error {
-	body, err := a.buildEmbeddingsBody(req) // payload + model, no stream flag
+	body, err := a.buildEmbeddingsBody(req) // payload and model, no stream
 	if err != nil {
 		return fmt.Errorf("openai: marshal request: %w", err)
 	}
@@ -779,8 +761,8 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 			CompletionTokens: oa.Usage.CompletionTokens,
 			TotalTokens:      oa.Usage.TotalTokens,
 		},
-		// Provider/Model are surfaced to the Caller only when the inward Scrub
-		// decides so (Reveal). The adapter reports them; the Membrane gates them.
+		// The Membrane decides whether to show Provider and Model to the Caller
+		// (Reveal).
 		Provider: a.id,
 		Model:    oa.Model,
 	}, nil
@@ -797,9 +779,8 @@ type oaStreamChunk struct {
 }
 
 // Stream implements providers.Provider for the streaming (SSE) path. It relays
-// each chunk incrementally via emit and applies an idle timeout: if no data
-// arrives within idleTimeout, the upstream request is cancelled and
-// ErrUpstreamTimeout is returned.
+// each chunk through emit. If no data arrives within idleTimeout, it cancels the
+// upstream request and returns ErrUpstreamTimeout.
 func (a *Adapter) Stream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.StreamChunk) error) error {
 	body, err := a.buildChatBody(providers.Request{Model: req.Model, Payload: req.Payload, Stream: true})
 	if err != nil {
@@ -824,7 +805,6 @@ func (a *Adapter) Stream(ctx context.Context, req providers.Request, id provider
 		return providers.UpstreamStatusError{Status: resp.StatusCode, Provider: a.id}
 	}
 
-	// Idle timeout: cancel the upstream request if no line arrives in time.
 	idleFired := false
 	idle := time.AfterFunc(a.idleTimeout, func() {
 		idleFired = true
@@ -844,7 +824,7 @@ func (a *Adapter) Stream(ctx context.Context, req providers.Request, id provider
 				return providers.ErrUpstreamTimeout
 			}
 			if ctx.Err() != nil {
-				// Parent cancelled (e.g. client disconnect).
+				// Parent cancelled, for example by a client disconnect.
 				return ctx.Err()
 			}
 			if errors.Is(err, io.EOF) {
@@ -868,7 +848,7 @@ func (a *Adapter) Stream(ctx context.Context, req providers.Request, id provider
 
 		var chunk oaStreamChunk
 		if jsonErr := json.Unmarshal([]byte(data), &chunk); jsonErr != nil {
-			// Skip malformed keepalive/comment frames rather than leaking details.
+			// Skip malformed and keepalive frames.
 			continue
 		}
 		if len(chunk.Choices) == 0 {

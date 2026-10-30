@@ -34,11 +34,8 @@ func TestBuildFamilies(t *testing.T) {
 	}
 }
 
-// TestAdapterSupports proves the structural capability gate agrees exactly with
-// the declared FamilySupports matrix for every family × operation: a concretely
-// built adapter implements the optional capability interface for precisely the
-// operations its family declares. This keeps the two layers in sync so a
-// declared-but-unimplemented (or implemented-but-undeclared) operation is caught.
+// TestAdapterSupports checks that AdapterSupports agrees with FamilySupports for
+// every family and operation.
 func TestAdapterSupports(t *testing.T) {
 	allOps := []types.Operation{
 		types.OperationChat,
@@ -68,11 +65,10 @@ func TestAdapterSupports(t *testing.T) {
 			if berr != nil {
 				t.Fatalf("build: %v", berr)
 			}
-			// chat is the core capability and must always be supported.
 			if !factory.AdapterSupports(adapter, types.OperationChat) {
 				t.Error("chat must always be supported")
 			}
-			// Empty operation defaults to chat → supported.
+			// An empty operation defaults to chat.
 			if !factory.AdapterSupports(adapter, "") {
 				t.Error("empty operation should default to chat and be supported")
 			}
@@ -93,9 +89,8 @@ func TestBuildUnknown(t *testing.T) {
 	}
 }
 
-// TestBuildAmbientAuthModes proves the ambient IAM auth modes construct an
-// adapter without a stored secret (credential/token sources are lazy, so no
-// network happens at build time).
+// TestBuildAmbientAuthModes checks that ambient auth modes build an adapter
+// without a stored secret or network access.
 func TestBuildAmbientAuthModes(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -121,8 +116,8 @@ func TestBuildAmbientAuthModes(t *testing.T) {
 	}
 }
 
-// TestBuildRejectsUnsupportedAuthMode proves a family rejects an auth mode it
-// does not support at build time.
+// TestBuildRejectsUnsupportedAuthMode checks that Build rejects an auth mode the
+// family does not support.
 func TestBuildRejectsUnsupportedAuthMode(t *testing.T) {
 	_, err := factory.Build(config.TargetConfig{Provider: config.ProviderBedrock, Region: "us-east-1", AuthMode: "azure_managed_identity"})
 	if err == nil {
@@ -130,9 +125,8 @@ func TestBuildRejectsUnsupportedAuthMode(t *testing.T) {
 	}
 }
 
-// TestFamiliesMatchBuild asserts the advertised family registry is exactly the
-// set Build can construct — so Families() cannot drift from the real switch and
-// verification suites that enumerate it stay authoritative.
+// TestFamiliesMatchBuild checks that every family returned by Families builds
+// and reports its own ID.
 func TestFamiliesMatchBuild(t *testing.T) {
 	fams := factory.Families()
 	if len(fams) == 0 {
@@ -145,7 +139,6 @@ func TestFamiliesMatchBuild(t *testing.T) {
 		}
 		seen[f] = true
 
-		// Every advertised family must Build without error.
 		tc := config.TargetConfig{Provider: types.ProviderID(f), Endpoint: "http://x"}
 		switch f {
 		case string(config.ProviderAzureOpenAI):

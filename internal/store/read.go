@@ -2,13 +2,13 @@ package store
 
 import "strings"
 
-// The read row types are plain, transport-free projections of the stored state.
-// They hold references and hashes only — never secret values. The app layer
-// (composition root) turns them into the validated serving Snapshot.
+// The row types below mirror the stored state. They hold secret references and
+// hashes, never secret values. The app package builds the serving Snapshot
+// from them.
 
-// PathwayRow is one routing pathway: the admin-attached set of providers it may
-// route to, which one is the default (used when the caller supplies no cascade),
-// and whether a caller may supply its own provider+model cascade at request time.
+// PathwayRow is one routing pathway: the providers it may route to, the
+// default provider used when the caller sends no cascade, and whether a caller
+// may send its own provider and model cascade.
 type PathwayRow struct {
 	Name            string
 	Operation       string
@@ -17,11 +17,10 @@ type PathwayRow struct {
 	Providers       []string
 }
 
-// ProviderRow is one configured provider: the vendor family, how it
-// authenticates (AuthMode and, for aws_assume_role, RoleARN/ExternalID), its
-// connection facts, the admin-controlled Models allowlist with a DefaultModel,
-// and (for api_key auth) the sealed-key reference. secret_ref is a reference
-// only (never a value); the sealed value lives in the secrets table.
+// ProviderRow is one configured provider: its vendor family, auth mode
+// (RoleARN and ExternalID apply to aws_assume_role), connection settings,
+// allowed Models with a DefaultModel, and for api_key auth a SecretRef. The
+// sealed value itself lives in the secrets table.
 type ProviderRow struct {
 	Name         string
 	Family       string
@@ -38,14 +37,14 @@ type ProviderRow struct {
 	SecretRef    string
 }
 
-// CredentialRow is a named secret reference (never a value).
+// CredentialRow is a named secret reference.
 type CredentialRow struct {
 	Name          string
 	SecretRef     string
 	NextSecretRef string
 }
 
-// CallerRow is a Caller Key record: identity + hashed secret + allowlist.
+// CallerRow is a Caller Key record: identity, secret hash and allowlist.
 type CallerRow struct {
 	KeyID      string
 	CallerID   string
@@ -62,8 +61,8 @@ type PermeabilityRow struct {
 	InboundOnReveal []string
 }
 
-// ReadPathways returns pathways (ordered by name) each with their
-// targets (ordered by priority then id for determinism).
+// ReadPathways returns pathways ordered by name, each with its providers
+// ordered by name.
 func (s *Store) ReadPathways() ([]PathwayRow, error) {
 	rows, err := s.db.Query(`SELECT name, operation, cascade_allowed, default_provider FROM pathways ORDER BY name`)
 	if err != nil {
@@ -116,8 +115,7 @@ func (s *Store) pathwayProvidersFor(pathway string) ([]string, error) {
 	return out, rows.Err()
 }
 
-// ReadProviders returns configured providers ordered by name. References only —
-// never a sealed value.
+// ReadProviders returns configured providers ordered by name.
 func (s *Store) ReadProviders() ([]ProviderRow, error) {
 	rows, err := s.db.Query(
 		`SELECT name, family, auth_mode, role_arn, external_id,
@@ -243,8 +241,8 @@ func (s *Store) ReadPermeability() ([]PermeabilityRow, error) {
 	return out, rows.Err()
 }
 
-// IsConfigured reports whether any pathway exists — a cheap precheck the
-// daemon uses to distinguish a fresh (empty) store from a configured one.
+// IsConfigured reports whether any pathway exists. The daemon uses it to tell
+// an empty store from a configured one.
 func (s *Store) IsConfigured() (bool, error) {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pathways`).Scan(&n); err != nil {
@@ -253,8 +251,8 @@ func (s *Store) IsConfigured() (bool, error) {
 	return n > 0, nil
 }
 
-// splitList turns the newline-delimited storage form into a slice, dropping
-// empty entries. An empty/absent value yields a nil slice.
+// splitList parses the newline-delimited storage form, dropping empty
+// entries. An empty value yields nil.
 func splitList(s string) []string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -270,6 +268,6 @@ func splitList(s string) []string {
 	return out
 }
 
-// JoinList is the inverse of splitList: it renders a field list to the
-// newline-delimited storage form. Exported for the write path.
+// JoinList is the inverse of splitList: it joins items into the
+// newline-delimited storage form.
 func JoinList(items []string) string { return strings.Join(items, "\n") }

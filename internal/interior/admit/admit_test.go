@@ -101,8 +101,8 @@ func TestParseStoreInvalid(t *testing.T) {
 }
 
 func TestParseStoreEmptyIsDenyAll(t *testing.T) {
-	// An empty caller store is valid (deny-by-default); it authenticates nobody
-	// so routing can be configured before any Caller Key exists.
+	// An empty caller store is valid. It authenticates nobody, so routing can be
+	// configured before any Caller Key exists.
 	for _, y := range []string{"callers: []\n", "version: 1\ncallers: []\n", "version: 1\n"} {
 		store, err := admit.ParseStore([]byte(y))
 		if err != nil {
@@ -162,7 +162,7 @@ func TestAllowDenyByDefault(t *testing.T) {
 
 func TestAllowEmptyDeniesEverything(t *testing.T) {
 	hash := admit.HashSecret("s3cr3t-demo-key")
-	// No allow key => deny-by-default.
+	// No allow key means deny by default.
 	y := "callers:\n  - key_id: ck_demo\n    caller_id: acme-app\n    hash: " + hash + "\n"
 	store, err := admit.ParseStore([]byte(y))
 	if err != nil {

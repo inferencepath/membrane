@@ -7,18 +7,14 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// streamField is the well-known logical field controlling streaming. It only
-// takes effect if present in the Pathway's outbound allowlist.
+// streamField is the payload field that requests streaming. It has effect only
+// when the Pathway's outbound allowlist includes it.
 const streamField = "stream"
 
-// Sanitize rebuilds an outbound request from the Pathway's outbound
-// Permeability allowlist, producing a SanitizedRequest for the request's
-// Pathway.
-//
-// It copies ONLY the fields named in the allowlist that are present in the
-// request payload. Everything else — including caller/org identity and the
-// Reveal flag — is dropped by construction. Sanitize is the sole constructor of
-// a populated SanitizedRequest.
+// Sanitize builds a SanitizedRequest from req using the Pathway's outbound
+// Permeability allowlist. Only allowlisted fields present in the payload are
+// copied; everything else, including Caller identity and Reveal, is dropped.
+// Sanitize is the only way to build a populated SanitizedRequest.
 func Sanitize(req types.CanonicalRequest, spec permeability.Spec) (SanitizedRequest, error) {
 	ds, ok := spec.Pathways[req.PathwayID]
 	if !ok {

@@ -13,11 +13,9 @@ const (
 	revealFieldModel    = "model"
 )
 
-// ScrubResponse applies the inbound Permeability to a provider response on the
-// inward path. The provider-neutral fields (message, finish_reason, usage) always
-// pass; the provider identity (provider/model) is included ONLY when the Caller
-// set the Reveal flag AND the corresponding field is in the Pathway's inbound
-// on_reveal set. Otherwise it is cleared, so the response is provider-neutral.
+// ScrubResponse applies the inbound Permeability to a chat response. Message,
+// finish reason, and usage always pass. Provider and model pass only when
+// reveal is set and the field is in the Pathway's on_reveal set.
 func ScrubResponse(resp types.CanonicalResponse, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalResponse, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -47,8 +45,7 @@ func ScrubResponse(resp types.CanonicalResponse, spec permeability.Spec, pathway
 	return out, nil
 }
 
-// revealed reports whether a given on_reveal disclosure field is permitted for a
-// pathway when the Caller set the Reveal flag.
+// revealed reports whether field is in the on_reveal set.
 func revealed(onReveal []string, field string) bool {
 	for _, f := range onReveal {
 		if f == field {
@@ -58,11 +55,8 @@ func revealed(onReveal []string, field string) bool {
 	return false
 }
 
-// ScrubRerank applies the inbound Permeability to a rerank result on the inward
-// path. The provider-neutral fields (results,
-// usage) always pass; the provider identity (provider/model) is included ONLY
-// when the Caller set the Reveal flag AND the corresponding field is in the
-// Pathway's inbound on_reveal set.
+// ScrubRerank applies the inbound Permeability to a rerank result. Results and
+// usage always pass; provider and model are gated as in ScrubResponse.
 func ScrubRerank(resp types.CanonicalRerank, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalRerank, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -87,11 +81,8 @@ func ScrubRerank(resp types.CanonicalRerank, spec permeability.Spec, pathway typ
 	return out, nil
 }
 
-// ScrubModerations applies the inbound Permeability to a moderations result on
-// the inward path. The provider-neutral results
-// always pass; the provider identity (provider/model) is included ONLY when the
-// Caller set the Reveal flag AND the corresponding field is in the Pathway's
-// inbound on_reveal set.
+// ScrubModerations applies the inbound Permeability to a moderations result.
+// Results always pass; provider and model are gated as in ScrubResponse.
 func ScrubModerations(resp types.CanonicalModerations, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalModerations, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -109,11 +100,9 @@ func ScrubModerations(resp types.CanonicalModerations, spec permeability.Spec, p
 	return out, nil
 }
 
-// ScrubTranscription applies the inbound Permeability to a transcription result on
-// the inward path. The provider-neutral fields
-// (text, segments, usage) always pass; the provider identity (provider/model) is
-// included ONLY when the Caller set the Reveal flag AND the corresponding field is
-// in the Pathway's inbound on_reveal set.
+// ScrubTranscription applies the inbound Permeability to a transcription
+// result. Text, segments, and usage always pass; provider and model are gated
+// as in ScrubResponse.
 func ScrubTranscription(resp types.CanonicalTranscription, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalTranscription, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -136,10 +125,10 @@ func ScrubTranscription(resp types.CanonicalTranscription, spec permeability.Spe
 	return out, nil
 }
 
-// RevealAllows reports whether a given on_reveal disclosure field (e.g. "provider"
-// or "model") is permitted for a pathway. It lets handlers whose response is not a
-// JSON body (e.g. audio_speech, which surfaces provider/model via headers) apply
-// the same inbound on_reveal gating as the struct-based Scrub* helpers.
+// RevealAllows reports whether field ("provider" or "model") is in the
+// Pathway's on_reveal set. Handlers that do not return a JSON body, such as
+// audio_speech, which sends provider and model as headers, use it to apply the
+// same gating as the Scrub functions.
 func RevealAllows(spec permeability.Spec, pathway types.PathwayID, field string) bool {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -148,11 +137,8 @@ func RevealAllows(spec permeability.Spec, pathway types.PathwayID, field string)
 	return revealed(ds.Inbound.OnReveal, field)
 }
 
-// ScrubImage applies the inbound Permeability to an image-generation result on
-// the inward path. The provider-neutral fields
-// (data, usage) always pass; the provider identity (provider/model) is included
-// ONLY when the Caller set the Reveal flag AND the corresponding field is in the
-// Pathway's inbound on_reveal set.
+// ScrubImage applies the inbound Permeability to an image generation result.
+// Data and usage always pass; provider and model are gated as in ScrubResponse.
 func ScrubImage(resp types.CanonicalImage, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalImage, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -177,11 +163,9 @@ func ScrubImage(resp types.CanonicalImage, spec permeability.Spec, pathway types
 	return out, nil
 }
 
-// ScrubResponses applies the inbound Permeability to a responses result on the
-// inward (non-streaming) path. The provider-neutral
-// fields (output, finish_reason, usage) always pass; the provider identity
-// (provider/model) is included ONLY when the Caller set the Reveal flag AND the
-// corresponding field is in the Pathway's inbound on_reveal set.
+// ScrubResponses applies the inbound Permeability to a non-streaming responses
+// result. Output, finish reason, and usage always pass; provider and model are
+// gated as in ScrubResponse.
 func ScrubResponses(resp types.CanonicalResponses, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalResponses, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {
@@ -207,12 +191,8 @@ func ScrubResponses(resp types.CanonicalResponses, spec permeability.Spec, pathw
 	return out, nil
 }
 
-// ScrubEmbeddings applies the inbound Permeability to an embeddings result on the
-// inward path. The provider-neutral fields (data,
-// usage) always pass; the provider identity (provider/model) is included ONLY
-// when the Caller set the Reveal flag AND the corresponding field is in the
-// Pathway's inbound on_reveal set. Otherwise it is cleared, so the response is
-// provider-neutral.
+// ScrubEmbeddings applies the inbound Permeability to an embeddings result.
+// Data and usage always pass; provider and model are gated as in ScrubResponse.
 func ScrubEmbeddings(resp types.CanonicalEmbeddings, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalEmbeddings, error) {
 	ds, ok := spec.Pathways[pathway]
 	if !ok {

@@ -1,9 +1,7 @@
 // Package speech implements the logical /v1/audio/speech (text-to-speech)
-// handler: Admit → Authorize → Resolve (operation-gated) → Scrub → Transporter
-// (+ Egress Identity) → inward relay. The response is a BINARY audio body relayed
-// incrementally; on Reveal, provider/model are surfaced via response headers and
-// never inside the audio bytes. No endpoint here emits provider endpoints,
-// credentials, or caller identity on the egress side.
+// handler: Admit, Authorize, Resolve, Scrub, Transporter with Egress Identity,
+// then the inward relay. The binary audio body is relayed incrementally; on
+// Reveal, provider and model go in response headers, never in the audio.
 package speech
 
 import (
@@ -27,8 +25,8 @@ import (
 // Route is the path this handler serves.
 const Route = "/v1/audio/speech"
 
-// Reveal response headers (named only when the Caller set Reveal and the inbound
-// on_reveal set permits the field).
+// Reveal response headers, set only when the Caller requests Reveal and the
+// inbound on_reveal set permits the field.
 const (
 	headerProvider = "X-InferencePath-Provider"
 	headerModel    = "X-InferencePath-Model"
@@ -59,7 +57,7 @@ type Handler struct {
 	now     func() time.Time
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink.
@@ -71,7 +69,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -208,8 +206,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ct = "application/octet-stream"
 			}
 			w.Header().Set("Content-Type", ct)
-			// Reveal gating mirrors the Scrub* helpers but surfaces identity via
-			// headers because the body is opaque binary audio.
+			// Same Reveal gating as the Scrub helpers, but via headers because
+			// the body is binary audio.
 			if req.Reveal {
 				if scrub.RevealAllows(snap.Permeability, capID, "provider") && c.Provider != "" {
 					w.Header().Set(headerProvider, string(c.Provider))
@@ -245,7 +243,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.writeTransportError(w, err, req.Reveal)
 			return
 		}
-		// Head/body already sent: cannot emit a JSON error. Log neutrally and end.
+		// The response has already started, so a JSON error cannot be sent.
 		h.logger.Warn("speech stream terminated with error", "pathway", string(capID), "error", err.Error())
 		return
 	}
@@ -275,7 +273,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

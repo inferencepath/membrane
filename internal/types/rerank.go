@@ -1,26 +1,20 @@
 package types
 
-// This file defines the logical, provider-agnostic `rerank` API DTOs and the
-// canonical inward representation. As with chat and embeddings, these are
-// Interior-only shapes: the Caller Key is carried in the request transport
-// (Authorization header), never in the body, and the Reveal flag is an
-// Interior-only control field that never crosses the Membrane.
-
-// RerankRequest is the inbound logical rerank request: a query ranked against a
-// list of candidate documents.
+// RerankRequest is the inbound rerank request: a query ranked against a list of
+// candidate documents.
 type RerankRequest struct {
 	Pathway   string   `json:"pathway"`
 	Query     string   `json:"query"`
 	Documents []string `json:"documents"`
-	// TopN optionally caps the number of returned results (by descending score).
+	// TopN optionally limits the results to the highest-scoring N.
 	TopN *int `json:"top_n,omitempty"`
 	// ReturnDocuments echoes the original document text in each result.
 	ReturnDocuments bool `json:"return_documents,omitempty"`
-	// Reveal is the Interior-only opt-in to receive provider/model. It is consumed
-	// on the Interior and MUST NOT cross the Membrane.
+	// Reveal asks for the provider and model in the response. It is consumed
+	// on the Interior and does not cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
@@ -37,9 +31,9 @@ type RerankUsage struct {
 	TotalTokens int `json:"total_tokens"`
 }
 
-// CanonicalRerank is the provider-agnostic rerank result assembled on the inward
-// path. Provider and Model are surfaced to the Caller only when the Reveal flag
-// was set (gated by the inbound Permeability on_reveal set).
+// CanonicalRerank is the rerank result assembled on the inward path. Provider
+// and Model reach the Caller only on Reveal, gated by the inbound Permeability
+// on_reveal set.
 type CanonicalRerank struct {
 	PathwayID PathwayID
 	Results   []RerankResult
@@ -48,8 +42,8 @@ type CanonicalRerank struct {
 	Model     string
 }
 
-// RerankResponse is the Caller-facing, provider-neutral rerank response. Provider
-// and Model are populated only when the Caller set the Reveal flag.
+// RerankResponse is the rerank response returned to the Caller. Provider and
+// Model are set only when the Caller requested Reveal.
 type RerankResponse struct {
 	Pathway  string         `json:"pathway"`
 	Results  []RerankResult `json:"results"`

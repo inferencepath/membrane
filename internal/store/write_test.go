@@ -38,7 +38,7 @@ func TestWriteAndRenderPathways(t *testing.T) {
 	if err != nil || !strings.Contains(string(doc), "default_provider: main") {
 		t.Fatalf("render caps = %s (err %v)", doc, err)
 	}
-	// Replace semantics: writing fewer rows removes the rest.
+	// Writing fewer rows removes the rest.
 	if err := s.WritePathways(rows[:0]); err != nil {
 		t.Fatalf("write empty: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestPathwayOperationRoundTrip(t *testing.T) {
 		t.Fatalf("seed providers: %v", err)
 	}
 	rows := []store.PathwayRow{
-		{Name: "chat", DefaultProvider: "main", Providers: []string{"main"}}, // operation omitted ⇒ chat
+		{Name: "chat", DefaultProvider: "main", Providers: []string{"main"}}, // no operation means chat
 		{Name: "embed", Operation: "embeddings", DefaultProvider: "main", Providers: []string{"main"}},
 	}
 	if err := s.WritePathways(rows); err != nil {
@@ -77,7 +77,7 @@ func TestPathwayOperationRoundTrip(t *testing.T) {
 	if byName["embed"].Operation != "embeddings" {
 		t.Errorf("embed operation = %q, want embeddings", byName["embed"].Operation)
 	}
-	// Rendered YAML: default chat is omitted; embeddings is emitted.
+	// The default operation (chat) is omitted from the YAML; embeddings is not.
 	doc, err := s.RenderPathways()
 	if err != nil {
 		t.Fatalf("render: %v", err)

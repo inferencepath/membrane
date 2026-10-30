@@ -10,12 +10,11 @@ import (
 // adminAuditCap bounds the in-memory admin-action audit ring.
 const adminAuditCap = 200
 
-// UsageRecord is a console-local, secret-free view of one Interior-only usage
-// audit record. It mirrors the Interior audit record's safe fields: it carries
-// NO prompt/response content, NO secret, NO Reveal flag, and NO Exterior
-// topology (endpoint/region/deployment/ARN/keyring_ref/provider). The concrete
-// AuditSource (in internal/consoleaudit) maps the Interior record to this type,
-// so the console package never imports the Interior audit package.
+// UsageRecord is the console's view of one Interior-only usage audit record.
+// It has no prompt or response content, no secret, no Reveal flag, and no
+// Exterior topology (endpoint, region, deployment, ARN, keyring_ref,
+// provider). internal/consoleaudit maps Interior records to this type so the
+// console does not import the Interior audit package.
 type UsageRecord struct {
 	Time             time.Time `json:"time"`
 	CallerID         string    `json:"callerId"`
@@ -29,15 +28,14 @@ type UsageRecord struct {
 }
 
 // AuditSource provides read-only access to recent Interior-only usage records.
-// A nil AuditSource disables the usage-audit endpoint (503) — e.g. when no file
-// audit sink is configured.
+// A nil AuditSource, as when no file audit sink is configured, makes the
+// usage-audit endpoint return 503.
 type AuditSource interface {
 	// Recent returns up to limit most-recent usage records, newest first.
 	Recent(limit int) ([]UsageRecord, error)
 }
 
-// handleAuditUsage serves recent Interior-only usage records. It is
-// read-only and secret-free; when no audit source is wired it returns 503.
+// handleAuditUsage serves recent Interior-only usage records.
 func (c *Console) handleAuditUsage(w http.ResponseWriter, _ *http.Request) {
 	if c.cfg.Audit == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -56,10 +54,9 @@ func (c *Console) handleAuditUsage(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"records": records})
 }
 
-// AdminAuditEntry is a basic, local record of a console admin action: who (the
-// request's remote), what (the action + outcome), and when. It is secret-free:
-// it names the config kind or action, never any value, token, or content.
-// Tamper-evident export / SIEM / retention are out of scope (Enterprise).
+// AdminAuditEntry is a local record of a console admin action: the remote
+// host, the action and its result, and the time. It names the config kind or
+// action, never a value, token, or content.
 type AdminAuditEntry struct {
 	Time   time.Time `json:"time"`
 	Action string    `json:"action"`
@@ -98,7 +95,7 @@ func (a *adminAudit) list() []AdminAuditEntry {
 	return out
 }
 
-// recordAdmin logs a console admin action, secret-free.
+// recordAdmin adds a console admin action to the admin audit.
 func (c *Console) recordAdmin(r *http.Request, action, result string) {
 	c.admin.record(AdminAuditEntry{
 		Time:   time.Now().UTC(),
@@ -108,7 +105,7 @@ func (c *Console) recordAdmin(r *http.Request, action, result string) {
 	})
 }
 
-// applyOutcome maps an ApplyResult to a stable, secret-free outcome label.
+// applyOutcome maps an ApplyResult to a stable outcome label.
 func applyOutcome(res ApplyResult) string {
 	switch {
 	case res.Applied:
@@ -126,7 +123,7 @@ func (c *Console) handleAuditAdmin(w http.ResponseWriter, _ *http.Request) {
 }
 
 // remoteLabel renders a request's origin for the admin audit: "localhost" for a
-// loopback client, otherwise the bare host (not a secret).
+// loopback client, otherwise the bare host.
 func remoteLabel(remoteAddr string) string {
 	if isLoopbackRemote(remoteAddr) {
 		return "localhost"

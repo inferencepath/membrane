@@ -46,9 +46,7 @@ func identityLadenRequest() types.CanonicalRequest {
 }
 
 func TestSanitizeDropsToolsWhenNotAllowlisted(t *testing.T) {
-	// Closed by default: tool fields cross ONLY when the
-	// Pathway's outbound allowlist names them. The chatSpec allows only
-	// [messages, temperature, stream], so tools/tool_choice must be dropped.
+	// chatSpec does not allowlist tools or tool_choice, so both are dropped.
 	spec := mustSpec(t, chatSpec)
 	req := types.CanonicalRequest{
 		PathwayID: "chat",
@@ -151,7 +149,7 @@ func TestSanitizeUnknownPathway(t *testing.T) {
 }
 
 func TestSanitizeStreamHandling(t *testing.T) {
-	// stream present but non-bool => Stream() false
+	// A non-bool stream value means no streaming.
 	spec := mustSpec(t, chatSpec)
 	req := identityLadenRequest()
 	req.Payload["stream"] = "yes"
@@ -163,7 +161,7 @@ func TestSanitizeStreamHandling(t *testing.T) {
 		t.Errorf("stream = true, want false for non-bool value")
 	}
 
-	// stream not in allowlist => never copied, Stream() false
+	// A stream field outside the allowlist is not copied.
 	noStream := mustSpec(t, `
 version: 1
 pathways:

@@ -9,20 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file defines the declarative config Bundle: a single canonical YAML
-// document holding all four editable kinds (pathways, credentials, callers,
-// permeability) at once. The bundle is the unit of GitOps-style export/apply
-// (the `deck`-equivalent): operators export the live state to a file, keep it in
-// version control, and apply it back — reconciled through the daemon's own
-// parsers and written in one transaction. Secrets stay by reference; caller
-// secrets are hashes only — exactly as in the per-kind documents.
+// A bundle is one canonical YAML document holding every editable kind. It is
+// the unit of export and apply: operators export the live state, keep it in
+// version control, and apply it back in a single transaction. As in the
+// per-kind documents, secrets appear only as references and caller secrets
+// only as hashes.
 
 // BundleVersion is the schema version embedded in a rendered bundle.
 const BundleVersion = 1
 
-// Bundle is the in-memory projection of all editable kinds. It mirrors the read
-// row types so the snapshot builder, console editor, and export/apply path share
-// one representation.
+// Bundle holds the rows of every editable kind, using the same row types as
+// the Read methods.
 type Bundle struct {
 	Providers    []ProviderRow
 	Pathways     []PathwayRow
@@ -31,9 +28,9 @@ type Bundle struct {
 	Permeability []PermeabilityRow
 }
 
-// bundleDocYAML is the canonical bundle shape. It reuses the per-kind inner YAML
-// element types (defined in render.go) so a bundle section is byte-identical to
-// the corresponding stand-alone document's body.
+// bundleDocYAML is the canonical bundle shape. It reuses the per-kind element
+// types from render.go, so each section matches the body of the stand-alone
+// document for that kind.
 type bundleDocYAML struct {
 	Version      int                     `yaml:"version"`
 	Providers    []provEntryYAML         `yaml:"providers"`
@@ -43,8 +40,8 @@ type bundleDocYAML struct {
 	Permeability map[string]permDirsYAML `yaml:"permeability"`
 }
 
-// ReadBundle projects the entire store into a Bundle (ordered deterministically
-// by the underlying Read* queries). References and hashes only — never a value.
+// ReadBundle reads the whole store into a Bundle, in the order returned by the
+// Read methods.
 func (s *Store) ReadBundle() (Bundle, error) {
 	provs, err := s.ReadProviders()
 	if err != nil {
@@ -78,8 +75,8 @@ func (s *Store) RenderBundle() ([]byte, error) {
 	return RenderBundleDoc(b)
 }
 
-// RenderBundleDoc renders the given Bundle as canonical YAML. The output is the
-// stable, round-trippable form used for export and for the content version.
+// RenderBundleDoc renders b as canonical YAML. The output is stable, so it is
+// used both for export and for computing the content version.
 func RenderBundleDoc(b Bundle) ([]byte, error) {
 	doc := bundleDocYAML{Version: BundleVersion}
 	for _, p := range b.Providers {
@@ -111,9 +108,8 @@ func RenderBundleDoc(b Bundle) ([]byte, error) {
 	return yaml.Marshal(doc)
 }
 
-// ParseBundle maps a bundle document into a Bundle. It is a structural decode
-// only (unknown fields rejected); semantic validation is the daemon parsers'
-// job, run via the per-kind renders during apply.
+// ParseBundle decodes a bundle document, rejecting unknown fields. It does no
+// semantic validation; apply runs the daemon parsers on each rendered kind.
 func ParseBundle(raw []byte) (Bundle, error) {
 	var doc bundleDocYAML
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
@@ -151,16 +147,15 @@ func ParseBundle(raw []byte) (Bundle, error) {
 	return b, nil
 }
 
-// BundleVersionOf returns the content version token for a rendered bundle (a
-// hash of its canonical bytes) used for optimistic concurrency on apply.
+// BundleVersionOf returns the content version of a rendered bundle, a hash of
+// its bytes used for optimistic concurrency on apply.
 func BundleVersionOf(raw []byte) string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
 
-// RenderKindFromBundle renders one kind's stand-alone canonical document from a
-// Bundle, reusing the per-kind renderers so bundle-apply validation is identical
-// to single-kind apply. Used by the apply path to run each daemon parser.
+// RenderKindFromBundle renders the stand-alone document for one kind from b,
+// so a bundle apply validates each kind the same way a single-kind apply does.
 func RenderKindFromBundle(kind string, b Bundle) ([]byte, error) {
 	switch kind {
 	case KindProviders:

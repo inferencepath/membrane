@@ -1,11 +1,8 @@
-// Package config also loads the providers file (providers.yaml): the set of
-// configured providers, each owning everything needed to reach a vendor — the
-// family, connection facts (endpoint/deployment/region), a default model, and a
-// reference to the sealed key. Pathways reference a provider by name; all
-// connection config lives here, not on the pathway target. Like the other config
-// files it is parse-only and fails closed: unknown fields, unknown families,
-// duplicate/malformed names, inline secrets, and missing per-family requirements
-// are all rejected.
+// Package config also parses the providers document. A provider holds what is
+// needed to reach a vendor: family, auth mode, connection settings, allowed
+// models and a secret reference. Pathways refer to providers by name. Parsing
+// fails closed on unknown fields or families, bad names, inline secrets and
+// missing per-family settings.
 package config
 
 import (
@@ -31,17 +28,16 @@ const (
 	// AuthAWSAssumeRole assumes RoleARN (optionally with ExternalID) on top of
 	// the ambient chain; no stored secret.
 	AuthAWSAssumeRole = "aws_assume_role"
-	// AuthAzureManagedIdentity uses an Entra managed identity / workload identity
-	// to mint a bearer token; no stored secret.
+	// AuthAzureManagedIdentity gets a bearer token from an Entra managed or
+	// workload identity; no stored secret.
 	AuthAzureManagedIdentity = "azure_managed_identity"
-	// AuthGCPApplicationDefault uses ambient GCP credentials (Application Default
-	// Credentials: service account, workload identity, gcloud) to mint an OAuth
-	// bearer; no stored secret. Supported only by the gemini family (Vertex AI).
+	// AuthGCPApplicationDefault gets an OAuth token from GCP Application
+	// Default Credentials; no stored secret. Supported only by the gemini
+	// family, for Vertex AI.
 	AuthGCPApplicationDefault = "gcp_application_default"
 )
 
-// validAuthModes maps each family to the auth modes it accepts. Only Bedrock and
-// Azure OpenAI support IAM-style ambient auth; the pure API-key vendors do not.
+// validAuthModes maps each family to the auth modes it accepts.
 var validAuthModes = map[types.ProviderID]map[string]struct{}{
 	ProviderOpenAI:      {AuthAPIKey: {}},
 	ProviderAnthropic:   {AuthAPIKey: {}},
@@ -51,8 +47,8 @@ var validAuthModes = map[types.ProviderID]map[string]struct{}{
 	ProviderBedrock:     {AuthAPIKey: {}, AuthAWSBearerTokenBedrock: {}, AuthAWSDefaultChain: {}, AuthAWSAssumeRole: {}},
 }
 
-// AuthModeUsesSecret reports whether an auth mode requires a stored secret_ref
-// resolved from credentials/keyring (vs ambient host identity).
+// AuthModeUsesSecret reports whether mode needs a secret_ref, as opposed to
+// ambient host identity. An empty mode means api_key.
 func AuthModeUsesSecret(mode string) bool {
 	switch mode {
 	case "", AuthAPIKey, AuthAWSBearerTokenBedrock:
@@ -68,12 +64,10 @@ type ProvidersSpec struct {
 	Providers []ProviderConfig
 }
 
-// ProviderConfig is one configured provider: the vendor family, how it
-// authenticates (AuthMode plus RoleARN/ExternalID for aws_assume_role), the
-// connection facts, the admin-controlled allowed Models with a DefaultModel, and
-// (for api_key auth) the sealed-key reference. SecretRef is a reference only
-// (secret:/env:/file:/vault:) — never an inline value — and is empty for the
-// ambient IAM auth modes.
+// ProviderConfig is one configured provider. RoleARN and ExternalID apply to
+// aws_assume_role, and Project and Location to Vertex AI. SecretRef is a
+// reference (secret:, env:, file: or vault:) and is empty for ambient auth
+// modes.
 type ProviderConfig struct {
 	Name         string
 	Family       types.ProviderID
@@ -111,11 +105,10 @@ type providerEntryYAML struct {
 	SecretRef    string   `yaml:"secret_ref"`
 }
 
-// ParseProviders validates raw YAML bytes into a ProvidersSpec, rejecting
-// unknown fields, unknown families/auth modes, duplicate/malformed names, inline
-// secrets, empty or inconsistent model policy, and missing per-family
-// requirements (endpoint for openai/anthropic/local, endpoint+deployment for
-// azure-openai, region for bedrock).
+// ParseProviders validates raw YAML into a ProvidersSpec. Besides unknown
+// fields, families and auth modes, bad names, inline secrets and an invalid
+// model list, it enforces per-family settings: endpoint for openai, anthropic
+// and local; endpoint and deployment for azure-openai; region for bedrock.
 func ParseProviders(data []byte) (ProvidersSpec, error) {
 	var fc providersFileYAML
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -152,7 +145,6 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		return ProviderConfig{}, fmt.Errorf("unknown family %q", p.Family)
 	}
 
-	// Auth mode (default api_key) must be supported by the family.
 	authMode := p.AuthMode
 	if authMode == "" {
 		authMode = AuthAPIKey
@@ -161,8 +153,7 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		return ProviderConfig{}, fmt.Errorf("family %q does not support auth_mode %q", family, authMode)
 	}
 
-	// Credential requirements per auth mode. api_key needs a sealed/ref secret;
-	// the ambient IAM modes must NOT carry a secret_ref (nothing is stored).
+	// Secret-backed modes need a secret_ref; ambient modes must not have one.
 	switch authMode {
 	case AuthAPIKey, AuthAWSBearerTokenBedrock:
 		if p.SecretRef == "" {
@@ -181,7 +172,7 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		if p.RoleARN == "" {
 			return ProviderConfig{}, fmt.Errorf("role_arn is required for auth_mode aws_assume_role")
 		}
-	default: // aws_default_chain, azure_managed_identity
+	default: // aws_default_chain, azure_managed_identity, gcp_application_default
 		if p.SecretRef != "" {
 			return ProviderConfig{}, fmt.Errorf("secret_ref is not allowed for ambient auth_mode %q", authMode)
 		}
@@ -190,13 +181,11 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		}
 	}
 
-	// Model policy: a non-empty allowlist and a default drawn from it.
 	models, derr := validateModels(p.Models, p.DefaultModel)
 	if derr != nil {
 		return ProviderConfig{}, derr
 	}
 
-	// Per-family connection requirements.
 	switch family {
 	case ProviderAzureOpenAI:
 		if p.Endpoint == "" {
@@ -217,8 +206,8 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 			return ProviderConfig{}, fmt.Errorf("%s requires endpoint", family)
 		}
 	case ProviderGemini:
-		// Vertex AI (gcp_application_default) is project/location-scoped; AI Studio
-		// (api_key) uses the public/overridable endpoint and needs neither.
+		// Vertex AI is scoped to a project and location. AI Studio (api_key)
+		// uses its public endpoint and needs neither.
 		if authMode == AuthGCPApplicationDefault {
 			if p.Project == "" || p.Location == "" {
 				return ProviderConfig{}, fmt.Errorf("gemini vertex (gcp_application_default) requires project and location")
@@ -245,11 +234,11 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 	}, nil
 }
 
-// inferenceProfileRegionPrefixes maps a Bedrock cross-region inference-profile
-// geographic prefix (the model-id segment before the first dot) to the AWS
-// region prefix it must be invoked from. "global." profiles are valid from any
-// region and are intentionally absent; foundation-model ids (anthropic., amazon.,
-// meta., mistral., cohere., …) never match a key here and are left unrestricted.
+// inferenceProfileRegionPrefixes maps the geography prefix of a Bedrock
+// cross-region inference profile (the model ID up to the first dot) to the AWS
+// region prefix it must be called from. "global." profiles work from any
+// region and are absent. Foundation model IDs such as "anthropic." match no
+// key and are unrestricted.
 var inferenceProfileRegionPrefixes = map[string]string{
 	"us-gov": "us-gov-",
 	"us":     "us-",
@@ -257,11 +246,9 @@ var inferenceProfileRegionPrefixes = map[string]string{
 	"apac":   "ap-",
 }
 
-// validateBedrockModelRegions rejects a cross-region inference-profile model id
-// whose geographic prefix (us./eu./apac./us-gov.) is inconsistent with the
-// provider's configured region, catching a common misconfiguration at parse time
-// rather than as an opaque upstream error at request time. Plain foundation-model
-// ids and "global." profiles are unrestricted.
+// validateBedrockModelRegions rejects an inference profile model ID whose
+// geography prefix does not match region. This would otherwise surface as an
+// unclear upstream error at request time.
 func validateBedrockModelRegions(models []string, region string) error {
 	for _, m := range models {
 		seg := m
@@ -279,9 +266,8 @@ func validateBedrockModelRegions(models []string, region string) error {
 	return nil
 }
 
-// validateModels enforces a non-empty, duplicate-free allowed-model list whose
-// default is one of the entries, trimming blanks. The admin controls exactly
-// which models a developer may reach through the provider.
+// validateModels trims the allowed models and requires the list to be
+// non-empty, free of blanks and duplicates, and to contain def.
 func validateModels(models []string, def string) ([]string, error) {
 	if len(models) == 0 {
 		return nil, fmt.Errorf("at least one allowed model is required")

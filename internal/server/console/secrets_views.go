@@ -1,16 +1,11 @@
 package console
 
-// This file defines the console's sealed-secret management port and its view
-// types. As with the other ports, the types live in the console package (so the
-// console imports no store/secrets package) and the concrete SecretManager is
-// implemented in internal/consolestore and injected. Secret VALUES are write-only
-// from the console's perspective: an operator may set or rotate a value, but the
-// API never returns one — reads surface metadata only (name, version, when, and
-// whether a credential references it).
+// The SecretManager port is defined here so the console imports no store
+// package; internal/consolestore implements it. Secret values are write-only:
+// an operator may set or rotate one, but reads return metadata only.
 
-// SecretMetaView is the secret-free projection of one sealed secret: its name,
-// versions, last-updated timestamp, and whether any credential references it as
-// `secret:<name>` (used to guard deletes). It never carries a value.
+// SecretMetaView is the metadata of one sealed secret. Referenced reports
+// whether a credential uses it as secret:<name>, which blocks deletion.
 type SecretMetaView struct {
 	Name       string `json:"name"`
 	Version    int    `json:"version"`
@@ -24,11 +19,9 @@ type SecretsView struct {
 	Secrets []SecretMetaView `json:"secrets"`
 }
 
-// SecretManager is the sealed-secret management port: list metadata, set/rotate a
-// value, and delete. A nil SecretManager disables the secrets endpoints (they
-// return 503) — e.g. when no master key is configured (sealed store disabled).
-// The port is deliberately write-only for values: no method returns a plaintext
-// secret.
+// SecretManager lists, sets, and deletes sealed secrets. No method returns a
+// plaintext value. A nil SecretManager, as when no master key is configured,
+// makes the secrets endpoints return 503.
 type SecretManager interface {
 	// List returns metadata for all sealed secrets (never a value).
 	List() (SecretsView, error)

@@ -1,9 +1,8 @@
-// Live-path Diffusion-leak coverage: proves that across the
-// streaming (SSE / AWS event-stream) and failover paths, for every Provider
-// family, the request captured on the egress wire carries ONLY that target's
-// injected Egress Identity and no interior/Caller identity. The same claim is
-// asserted for the first (failing) target in a failover, so a leak cannot hide
-// on the path that is retried away.
+// Live-path Diffusion-leak coverage for the streaming (SSE and AWS event
+// stream) and failover paths. For every Provider family, the request captured on
+// the egress wire carries only that target's Egress Identity and no Interior or
+// Caller identity. The first, failing target in a failover is checked too, so a
+// leak cannot hide on the retried path.
 package diffusionleak
 
 import (

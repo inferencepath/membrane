@@ -48,7 +48,7 @@ func TestJSONLinesWritesOneLinePerRecord(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil {
 		t.Fatalf("line is not valid JSON: %v", err)
 	}
-	// Required fields present with expected shape/values.
+	// Required fields are present with the expected values.
 	for _, k := range []string{"schema_version", "timestamp", "caller_id", "pathway", "outcome", "duration_ms", "prompt_tokens", "completion_tokens", "total_tokens", "stream"} {
 		if _, ok := got[k]; !ok {
 			t.Fatalf("record missing field %q: %v", k, got)
@@ -59,8 +59,8 @@ func TestJSONLinesWritesOneLinePerRecord(t *testing.T) {
 	}
 }
 
-// TestJSONLinesContentSafety: a record never serializes content, secrets, the
-// reveal flag, or Exterior topology (only the known Interior fields appear).
+// TestJSONLinesContentSafety checks that only the known Interior fields are
+// serialized.
 func TestJSONLinesContentSafety(t *testing.T) {
 	var buf bytes.Buffer
 	audit.NewJSONLines(&buf, nil).Write(sampleRecord())
@@ -80,7 +80,7 @@ func TestJSONLinesContentSafety(t *testing.T) {
 			t.Fatalf("unexpected field %q in audit record (possible leak)", k)
 		}
 	}
-	// Explicitly ensure no forbidden keys snuck in.
+	// Check the forbidden keys by name as well.
 	for _, forbidden := range []string{"content", "messages", "secret", "reveal", "endpoint", "region", "deployment", "provider", "keyring_ref", "arn"} {
 		if _, ok := got[forbidden]; ok {
 			t.Fatalf("audit record contains forbidden field %q", forbidden)
@@ -88,7 +88,7 @@ func TestJSONLinesContentSafety(t *testing.T) {
 	}
 }
 
-// failingWriter always errors, to prove Write is best-effort.
+// failingWriter fails every write.
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
@@ -96,7 +96,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk ful
 func TestJSONLinesBestEffortOnWriteError(t *testing.T) {
 	var gotErr error
 	sink := audit.NewJSONLines(failingWriter{}, func(err error) { gotErr = err })
-	// Must not panic and must surface the error to onErr without propagating.
+	// The error goes to onErr; Write itself must not panic.
 	sink.Write(sampleRecord())
 	if gotErr == nil {
 		t.Fatalf("expected onErr to be called on write failure")
