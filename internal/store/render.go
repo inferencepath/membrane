@@ -6,13 +6,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// This file renders stored rows into the canonical config documents (the exact
-// YAML shapes the daemon's parsers accept). Rendering lives here so there is a
-// single source of truth for row→document mapping, shared by the snapshot
-// builder (app) and the console editor (consolestore). Secrets remain by
-// reference; nothing here resolves a secret value.
+// Rendering turns stored rows into the canonical YAML documents that the
+// daemon parsers accept. Both the Snapshot builder and the Console editor use
+// it. Secrets stay as references.
 
-// Editable kinds, named once.
+// Editable config kinds.
 const (
 	KindProviders    = "providers"
 	KindPathways     = "pathways"
@@ -50,8 +48,8 @@ func (s *Store) RenderPermeability() ([]byte, error) {
 }
 
 // RenderPermeabilityDoc renders the given permeability rows as canonical YAML.
-// It operates on candidate rows (not the stored ones) so the editor can validate
-// a proposed edit with the daemon's parser before committing it.
+// The editor uses the Doc variants to validate a proposed edit with the daemon
+// parser before writing it.
 func RenderPermeabilityDoc(rows []PermeabilityRow) ([]byte, error) {
 	doc := permDocYAML{Version: 1, Pathways: make(map[string]permDirsYAML, len(rows))}
 	for _, r := range rows {
@@ -85,7 +83,7 @@ func (s *Store) RenderCallers() ([]byte, error) {
 	return RenderCallersDoc(rows)
 }
 
-// RenderCallersDoc renders the given caller rows as canonical YAML (hashes only).
+// RenderCallersDoc renders the given caller rows as canonical YAML.
 func RenderCallersDoc(rows []CallerRow) ([]byte, error) {
 	doc := callerDocYAML{Version: 1}
 	for _, r := range rows {
@@ -117,8 +115,7 @@ func (s *Store) RenderCredentials() ([]byte, error) {
 	return RenderCredentialsDoc(rows)
 }
 
-// RenderCredentialsDoc renders the given credential rows as canonical YAML (no
-// values — references only).
+// RenderCredentialsDoc renders the given credential rows as canonical YAML.
 func RenderCredentialsDoc(rows []CredentialRow) ([]byte, error) {
 	doc := credDocYAML{Version: 1}
 	for _, r := range rows {
@@ -142,10 +139,9 @@ type capsRouteYAML struct {
 	Providers       []string `yaml:"providers"`
 }
 
-// capsRouteFromRow / capsRowFromRoute map between the stored PathwayRow and its
-// canonical YAML element, shared by the pathways doc and the bundle. The
-// operation is omitted from the rendered YAML when it is the default ("chat" or
-// empty), keeping existing bundles byte-identical and migration-free.
+// capsRouteFromRow and capsRowFromRoute convert between PathwayRow and its
+// YAML element. The default operation, chat, is left out of the YAML so
+// documents without an operation field render unchanged.
 func capsRouteFromRow(c PathwayRow) capsRouteYAML {
 	op := c.Operation
 	if op == "chat" {
@@ -189,8 +185,7 @@ type provEntryYAML struct {
 	SecretRef    string   `yaml:"secret_ref,omitempty"`
 }
 
-// provEntryFromRow maps a stored ProviderRow to its canonical YAML element,
-// shared by the stand-alone providers doc and the bundle.
+// provEntryFromRow converts a ProviderRow to its YAML element.
 func provEntryFromRow(p ProviderRow) provEntryYAML {
 	return provEntryYAML{
 		Name: p.Name, Family: p.Family, AuthMode: p.AuthMode,
@@ -223,8 +218,7 @@ func (s *Store) RenderProviders() ([]byte, error) {
 	return RenderProvidersDoc(rows)
 }
 
-// RenderProvidersDoc renders the given provider rows as canonical YAML
-// (references only — never a sealed value).
+// RenderProvidersDoc renders the given provider rows as canonical YAML.
 func RenderProvidersDoc(rows []ProviderRow) ([]byte, error) {
 	doc := provDocYAML{Version: 1}
 	for _, p := range rows {
@@ -269,14 +263,14 @@ func (s *Store) Render(kind string) ([]byte, error) {
 	}
 }
 
-// Kinds returns the editable kinds in a stable order. Providers come first so a
-// bundle apply writes provider definitions before the targets that reference them.
+// Kinds returns the editable kinds in a fixed order. Providers come first
+// because pathways reference them.
 func Kinds() []string {
 	return []string{KindProviders, KindPathways, KindCredentials, KindCallers, KindPermeability}
 }
 
-// ContentHash returns a stable hash over all four rendered documents, used to
-// detect no-op reloads (preserving live health/breaker state).
+// ContentHash returns a hash over every rendered document. A reload with an
+// unchanged hash is skipped, which keeps live health and breaker state.
 func (s *Store) ContentHash() ([sha256.Size]byte, error) {
 	h := sha256.New()
 	for _, kind := range Kinds() {

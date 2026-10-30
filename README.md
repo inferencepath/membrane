@@ -50,24 +50,24 @@ REQUEST LIFECYCLE
 
 ## The one hard invariant (and the rule that enforces it)
 
-1. **Hard invariant — Agent/LLM anonymity.** No caller or org identity ever
+1. **Hard invariant: Agent/LLM anonymity.** No caller or org identity ever
    crosses the **Membrane** to an LLM or agent. Identity is authenticated on the
    **Interior** and destroyed by the **Scrub** before any traffic reaches a
    **Provider**.
-2. **Enforcement rule — Credential custody.** Applications never hold provider
+2. **Enforcement rule: Credential custody.** Applications never hold provider
    credentials or endpoints. Credentials stay pooled in the **Keyring** at the
    Membrane, forcing every request through the Membrane so the invariant cannot
    be bypassed.
 
-Internal applications are trusted and **may** opt in — per request, via the
-Interior-only **Reveal flag** — to learn which provider/model answered. The
+Internal applications are trusted and **may** opt in, per request, via the
+Interior-only **Reveal flag** to learn which provider/model answered. The
 Reveal flag never crosses the Membrane, so it can only widen what a trusted app
 sees on the way back *in*; it can never change what the LLM sees on the way
 *out*.
 
 ## Status
 
-**Community v1.** The full capability set is shipped.
+**v1 capability set.** The full capability set is shipped.
 InferencePath delivers logical Pathways with credential custody, provider
 breadth with resilience, config-as-code policy with hot reload, and production
 hardening, with Agent/LLM anonymity proven on every live path. See
@@ -91,15 +91,15 @@ with a credentials-only Keyring; per-Caller **deny-by-default authorization**
 candidate; in-flight requests bind to one config snapshot).
 
 **Provider breadth & resilience.** The `chat` Pathway answers
-through **any** of several Provider families — **OpenAI-compatible** (incl.
+through **any** of several Provider families: **OpenAI-compatible** (incl.
 `local`), **Anthropic Messages**, **Azure OpenAI**, and **AWS Bedrock**
-(SigV4-signed) — selected per Pathway from a configured **pool**, with the
+(SigV4-signed), selected per Pathway from a configured **pool**, with the
 same anonymity guarantees on every path. It adds:
 
 - **Keyring & Pools**: named credential **references** (never inline secrets) and
   per-Pathway pools of ordered targets with a deterministic strategy
   (`priority` | `round_robin`). *(Now the managed store's `credentials` and
-  `pathways` kinds — see [configuration](#configuration-managed-mode).)*
+  `pathways` kinds; see [configuration](#configuration-managed-mode).)*
 - **Rotation**: secret **values** are re-resolved on an interval and on `SIGHUP`
   (zero-downtime); in-flight requests are unaffected and a backend outage keeps
   the last-good value.
@@ -116,8 +116,8 @@ same anonymity guarantees on every path. It adds:
   Pathway + a caller-anonymous provider-family label.
 
 **The Membrane core.** The end-to-end proof of
-the product: a logical `chat` Pathway flows **Admit → Resolve → Scrub →
-Transporter (+ Egress Identity) → OpenAI-compatible Provider → inward Scrub**,
+the product: a logical `chat` Pathway flows through **Admit, Resolve, Scrub,
+Transporter (+ Egress Identity), an OpenAI-compatible Provider, and the inward Scrub**,
 with anonymity proven on the live path. It ships:
 
 - A `POST /v1/chat` endpoint speaking **logical Pathways** (never provider
@@ -126,14 +126,14 @@ with anonymity proven on the live path. It ships:
   static **Binding** resolving `chat` to a pooled Provider + model.
 - An **OpenAI-compatible adapter** (OpenAI, vLLM, Ollama, …) whose upstream
   request is built *only* from the `SanitizedRequest` plus the **Egress Identity**
-  from the **Keyring** — no caller/org identity, Caller Key, or Reveal flag.
+  from the **Keyring**, with no caller/org identity, Caller Key, or Reveal flag.
 - The **Reveal flag**: a trusted app may learn `provider`/`model` on the way back
   *in*; the upstream request is byte-identical whether or not Reveal is set.
-- **Provider-neutral error handling** (timeout → `504`, upstream `4xx/5xx` → `502`)
+- **Provider-neutral error handling** (timeout returns `504`, upstream `4xx/5xx` returns `502`)
   that never leaks endpoints, credentials, or (unless Reveal) provider identity.
 - The **live Diffusion-leak suite**: a capturing fake Provider asserts the exact
   upstream bytes carry the Egress Identity and *none* of the denylisted
-  identity/control fields — across non-streaming, streaming, and error paths.
+  identity/control fields, across non-streaming, streaming, and error paths.
 
 **Foundations** provide the scaffolding beneath it: the
 boundary **types** that make an identity leak *unrepresentable* (`SanitizedRequest`
@@ -152,7 +152,7 @@ Requires **Go 1.26+** (or Docker).
 # Build the binary.
 make build
 
-# Run the full local quality gate (what CI enforces).
+# Run the full local quality gate.
 make check
 
 # Run in managed mode (bootstrap config + embedded store), seeded so it is READY:
@@ -161,7 +161,7 @@ make run     # = membrane --config ./config/dev.yaml --seed ./config/seed.exampl
 curl -s localhost:8080/healthz
 curl -s localhost:8080/readyz
 curl -s localhost:8080/version
-# and open the Membrane Console at http://127.0.0.1:7474
+# and open the Membrane Console at http://127.0.0.1:8300
 ```
 
 Or the whole stack (store + UI, no external DB) via Docker:
@@ -174,7 +174,7 @@ docker compose up -d
 ### Using the `chat` Pathway
 
 Applications call **logical Pathways**, never providers. They present only a
-**Caller Key** (`<key_id>.<secret>`) — never a provider credential or endpoint.
+**Caller Key** (`<key_id>.<secret>`), never a provider credential or endpoint.
 
 ```bash
 # The dev profile seeds a `chat` pathway; point it at a local OpenAI-compatible
@@ -205,34 +205,34 @@ curl -s localhost:8080/v1/chat \
 ```
 
 An invalid or missing Caller Key is rejected at Admit with `401` and **no Provider
-contact**. The demo key is for local use only — rotate it before any deployment.
+contact**. The demo key is for local use only; rotate it before any deployment.
 
 ### Configuration (managed mode)
 
 Membrane runs a single, **managed** operating model: a small bootstrap file plus
 an **embedded state store** (pure-Go SQLite under `data_dir`) that is the single
-source of truth for all operational config — routing (pathways), credential
+source of truth for all operational config: routing (pathways), credential
 **references**, Caller Keys (hashes), and the Permeability policy. No external
 database and no cloud.
 
-- [`config/membrane.yaml`](config/membrane.yaml) — bootstrap settings for a
+- [`config/membrane.yaml`](config/membrane.yaml): bootstrap settings for a
   container/hosted deploy (`server`, `data_dir`, `audit`, `console`).
-- [`config/dev.yaml`](config/dev.yaml) — local-development bootstrap (loopback
+- [`config/dev.yaml`](config/dev.yaml): local-development bootstrap (loopback
   console, repo-local `data_dir`).
-- [`config/seed.example.yaml`](config/seed.example.yaml) — a declarative **bundle**
+- [`config/seed.example.yaml`](config/seed.example.yaml): a declarative **bundle**
   (all kinds in one document; references/hashes only) applied via seed-on-empty,
   `membrane config apply`, or the Console's Export / Apply.
 
-Configure the store three interchangeable ways — the **Console** (structured
+Configure the store three interchangeable ways: the **Console** (structured
 editors or Export / Apply), the **CLI**, or **seed-on-empty**:
 
 ```bash
 membrane config export -f config.yaml     # snapshot the live config
 membrane config diff   -f config.yaml     # dry-run: per-kind change set
-membrane config apply  -f config.yaml     # validate → atomic write → hot reload
+membrane config apply  -f config.yaml     # validate, atomic write, hot reload
 ```
 
-Every edit runs **validate → atomic write → reload** (atomic, fail-closed,
+Every edit runs **validate, atomic write, reload** (atomic, fail-closed,
 last-good). Secrets are referenced only (`env:` / `file:` / `vault:`); inline
 values are rejected. `SIGHUP` forces a reload + secret rotation.
 
@@ -262,17 +262,15 @@ Build and probe a release-style deployment with `make smoke` (builds, starts
 against the sample config, and checks `/healthz` · `/readyz` · `/version` and
 graceful shutdown). Configure the store through the Console, the `membrane
 config` CLI, or seed-on-empty (see [Configuration](#configuration-managed-mode));
-every edit is **validate → atomic write → reload** (fail-closed, last-good).
+every edit is **validate, atomic write, reload** (fail-closed, last-good).
 Secrets are referenced only (`env:` / `file:` / `vault:`); inline values are
 rejected.
 
 ## Quality gate
 
-Every change is guarded locally (`make check`) and in CI
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): build, `go vet`,
-format check, lint, race tests, coverage thresholds, vulnerability scan, and
-secret scan. `main` is protected — all changes land via pull request with
-review; direct pushes are not permitted. See
+Every change is guarded by `make check`: build, `go vet`, format check, lint,
+race tests, coverage thresholds, and vulnerability scan; `make secretscan` adds a
+secret scan. To report a bug or request a feature, see
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Security

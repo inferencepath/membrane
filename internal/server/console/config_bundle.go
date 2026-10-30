@@ -5,14 +5,14 @@ import (
 	"net/http"
 )
 
-// This file serves the declarative export/apply API (the `deck`-equivalent):
-//   GET  /api/console/config/export  → the live configuration as one bundle
-//   POST /api/console/config/diff    → dry-run per-kind change set (no write)
-//   POST /api/console/config/apply   → validate → version check → atomic write → reload
+// Declarative config endpoints:
 //
-// All three require admin authorization (enforced by the mux middleware) and a
-// non-nil ConfigBundle; otherwise they return 503. Secrets stay by reference and
-// caller secrets are hashes only — the bundle carries no values.
+//	GET  /api/console/config/export  live configuration as one bundle
+//	POST /api/console/config/diff    per-kind change set, no write
+//	POST /api/console/config/apply   validate, check version, write, reload
+//
+// All three require admin authorization and a non-nil ConfigBundle (503
+// otherwise). Bundles carry secret references and caller hashes, never values.
 
 // bundleGuard returns the ConfigBundle when available, else writes 503.
 func (c *Console) bundleGuard(w http.ResponseWriter) (ConfigBundle, bool) {
@@ -36,8 +36,7 @@ func (c *Console) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.recordAdmin(r, "export", "ok")
-	// Serve as a downloadable YAML file so the SPA can save it directly, while
-	// still being a plain GET usable by the CLI/curl.
+	// Served as a download so the UI can save it; still a plain GET for curl.
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="membrane-config.yaml"`)
 	w.Header().Set("X-Config-Version", f.Version)

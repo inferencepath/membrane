@@ -44,7 +44,7 @@ func serve(t *testing.T, cfg fakeoa.Config) *httptest.Server {
 }
 
 func TestSpeechSuccessBinaryNeutral(t *testing.T) {
-	audio := []byte{0x49, 0x44, 0x33, 0x04, 0x00} // fake "ID3" mp3 header-ish
+	audio := []byte{0x49, 0x44, 0x33, 0x04, 0x00} // fake ID3 header
 	ts := serve(t, fakeoa.Config{Model: "backing", SpeechAudio: audio, SpeechContentType: "audio/mpeg"})
 	resp := post(t, ts.URL+speech.Route, harness.CallerKey, `{"pathway":"speak","input":"hello","voice":"alloy"}`)
 	defer resp.Body.Close()
@@ -54,7 +54,7 @@ func TestSpeechSuccessBinaryNeutral(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "audio/mpeg" {
 		t.Errorf("content-type = %q, want audio/mpeg", ct)
 	}
-	// No reveal: provider/model headers must be absent.
+	// Without Reveal, provider and model headers are absent.
 	if resp.Header.Get("X-InferencePath-Provider") != "" || resp.Header.Get("X-InferencePath-Model") != "" {
 		t.Errorf("provider/model headers leaked without reveal")
 	}

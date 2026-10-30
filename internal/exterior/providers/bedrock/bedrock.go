@@ -1,11 +1,9 @@
-// Package bedrock implements an AWS Bedrock Runtime Provider adapter. Chat uses
-// the model-agnostic Converse API, so a single request/response mapping serves
-// every Converse-capable model (Anthropic, Llama, Mistral, Titan, Nova, Cohere,
-// …) with no per-model branching — switching models is only a model-id change.
-// It authenticates either with AWS SigV4 credentials or with a Bedrock bearer
-// token, and builds its request ONLY from a neutral providers.Request plus that
-// identity — it has no access to Caller identity, the Caller Key, or the Reveal
-// flag.
+// Package bedrock implements a Provider adapter for the AWS Bedrock Runtime.
+// Chat uses the Converse API, which shares one schema across models, so
+// switching models only changes the model ID. Requests are signed with AWS
+// SigV4 or carry a Bedrock bearer token, and are built only from a
+// providers.Request and the EgressIdentity. The adapter has no access to Caller
+// identity, the Caller Key, or the Reveal flag.
 //
 // The EgressIdentity secret carries AWS credentials, encoded either as JSON
 // ({"access_key_id":...,"secret_access_key":...,"session_token":...}) or as a
@@ -51,8 +49,8 @@ type Adapter struct {
 	signer      *v4.Signer
 	client      *http.Client
 	nowFn       func() time.Time
-	// creds, when set, supplies AWS credentials dynamically (ambient IAM role /
-	// assume-role) instead of parsing them from the static EgressIdentity secret.
+	// creds, when set, supplies AWS credentials (ambient IAM role or AssumeRole)
+	// instead of parsing them from the EgressIdentity secret.
 	creds aws.CredentialsProvider
 	// bearerAuth, when set, uses Authorization: Bearer <token> from the static
 	// EgressIdentity secret instead of SigV4 credentials.
@@ -64,8 +62,7 @@ type Option func(*Adapter)
 
 // WithCredentialsProvider sources AWS credentials from the given provider
 // (ambient default chain or AssumeRole) rather than the EgressIdentity secret.
-// The provider is retrieved per request, so temporary credentials refresh
-// transparently.
+// Credentials are retrieved per request, so temporary credentials can refresh.
 func WithCredentialsProvider(p aws.CredentialsProvider) Option {
 	return func(a *Adapter) { a.creds = p }
 }
@@ -76,10 +73,10 @@ func WithBearerTokenAuth() Option {
 	return func(a *Adapter) { a.bearerAuth = true }
 }
 
-// New returns a Bedrock adapter for the given region. An optional baseURL
-// overrides the default regional endpoint (useful for tests); when empty the
-// standard https://bedrock-runtime.<region>.amazonaws.com endpoint is used.
-// idleTimeout bounds inactivity on streaming responses (defaulted if <= 0).
+// New returns a Bedrock adapter for the given region. A non-empty baseURL
+// overrides the regional https://bedrock-runtime.<region>.amazonaws.com
+// endpoint. idleTimeout bounds inactivity on streaming responses; a value <= 0
+// selects the default.
 func New(region, baseURL string, idleTimeout time.Duration, opts ...Option) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
@@ -115,8 +112,8 @@ func (a *Adapter) invokeURL(model string) string {
 	return fmt.Sprintf("%s/model/%s/invoke", a.base(), url.PathEscape(model))
 }
 
-// converseURL / converseStreamURL are the model-agnostic Converse chat
-// endpoints used by Complete and Stream.
+// converseURL and converseStreamURL are the Converse chat endpoints used by
+// Complete and Stream.
 func (a *Adapter) converseURL(model string) string {
 	return fmt.Sprintf("%s/model/%s/converse", a.base(), url.PathEscape(model))
 }
@@ -159,11 +156,9 @@ func (a *Adapter) authRequest(ctx context.Context, endpoint string, body []byte,
 	return httpReq, nil
 }
 
-// buildBody builds a Bedrock Converse request from the neutral payload. Converse
-// is model-agnostic: every text model shares one request/response schema, so the
-// adapter needs no per-model branching. System-role turns are lifted into the
-// top-level "system" field (Converse rejects a "system" role inside messages),
-// and the standard inference parameters are mapped into inferenceConfig.
+// buildBody builds a Bedrock Converse request from the neutral payload. System
+// turns move to the top-level "system" field, since Converse rejects a "system"
+// role inside messages, and sampling parameters map into inferenceConfig.
 func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 	system, messages := splitMessages(req.Payload["messages"])
 
@@ -195,11 +190,11 @@ func (a *Adapter) buildBody(req providers.Request) ([]byte, error) {
 }
 
 // splitMessages converts the neutral messages array into Converse's shape: a
-// top-level system block (text-only) plus user/assistant turns whose content is
-// a list of content blocks. Assistant tool_calls become toolUse blocks; a
-// neutral tool-result turn (role "tool") becomes a user message with a toolResult
-// block (Converse carries tool results in a user turn). Unknown roles are treated
-// as user input.
+// top-level text-only system block plus user and assistant turns whose content
+// is a list of content blocks. Assistant tool_calls become toolUse blocks. A
+// tool-result turn (role "tool") becomes a user message with a toolResult block,
+// which is where Converse expects tool results. Unknown roles are treated as
+// user input.
 func splitMessages(raw any) (system, messages []map[string]any) {
 	arr, ok := raw.([]any)
 	if !ok {
@@ -257,7 +252,7 @@ func splitMessages(raw any) (system, messages []map[string]any) {
 	return system, messages
 }
 
-// toolConfig maps the neutral tools/tool_choice payload into a Converse
+// toolConfig maps the neutral tools and tool_choice payload into a Converse
 // toolConfig, or nil when the request offers no tools.
 func toolConfig(payload map[string]any) map[string]any {
 	raw, ok := payload["tools"]
@@ -291,7 +286,8 @@ func toolConfig(payload map[string]any) map[string]any {
 }
 
 // toolChoice maps the neutral (OpenAI-style) tool_choice directive into the
-// Converse toolChoice shape. "none"/unknown yields nil (model default).
+// Converse toolChoice shape. "none" and unknown values return nil, which leaves
+// the model default.
 func toolChoice(raw any) map[string]any {
 	if raw == nil {
 		return nil
@@ -374,8 +370,8 @@ func mapErr(ctx context.Context, err error) error {
 	return err
 }
 
-// converseResponse is the minimal shape of a Bedrock Converse reply. This schema
-// is identical across every Converse-capable model.
+// converseResponse is the minimal shape of a Bedrock Converse reply. The schema
+// is the same for every Converse model.
 type converseResponse struct {
 	Output struct {
 		Message struct {
@@ -437,8 +433,7 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 		text.WriteString(c.Text)
 	}
 	msg.Content = text.String()
-	// Normalize the tool stop reason to the canonical "tool_calls" so callers see
-	// one finish reason for tool use across providers.
+	// Report tool use with the canonical "tool_calls" finish reason.
 	finish := cr.StopReason
 	if finish == "tool_use" {
 		finish = "tool_calls"
@@ -461,11 +456,11 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 }
 
 // converseStreamEvent is the minimal shape of a Bedrock Converse stream event.
-// The event kind is carried in the frame's :event-type header; the payload is
-// the event JSON directly (not base64-wrapped as in the raw InvokeModel stream).
-// A toolUse block opens with a contentBlockStart (start.toolUse carries id+name)
-// and streams its arguments as contentBlockDelta.delta.toolUse.input fragments,
-// both keyed by contentBlockIndex.
+// The event kind is in the frame's :event-type header and the payload is plain
+// event JSON, unlike the base64-wrapped InvokeModel stream. A toolUse block
+// opens with a contentBlockStart (start.toolUse carries id and name) and streams
+// its arguments as contentBlockDelta.delta.toolUse.input fragments, both keyed
+// by contentBlockIndex.
 type converseStreamEvent struct {
 	ContentBlockIndex int `json:"contentBlockIndex"`
 	Start             struct {
@@ -492,10 +487,8 @@ func eventType(headers eventstream.Headers) string {
 }
 
 // Stream implements providers.Provider for the streaming path. Bedrock replies
-// with an AWS event stream of Converse events; each frame's :event-type header
-// identifies the event and its payload is the event JSON directly. Those are
-// decoded and mapped to canonical chunks. An idle watchdog cancels a stalled
-// upstream.
+// with an AWS event stream of Converse events, which are mapped to canonical
+// chunks. An idle timer cancels a stalled upstream.
 func (a *Adapter) Stream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.StreamChunk) error) error {
 	body, err := a.buildBody(req)
 	if err != nil {
@@ -589,9 +582,9 @@ func (a *Adapter) Stream(ctx context.Context, req providers.Request, id provider
 	}
 }
 
-// resolveCredentials returns the AWS credentials to sign with: from the ambient
-// credentials provider when configured (IAM role / assume-role, auto-refreshing),
-// otherwise parsed from the static EgressIdentity secret (api_key auth).
+// resolveCredentials returns the AWS credentials to sign with. It uses the
+// configured credentials provider if there is one, and otherwise parses the
+// EgressIdentity secret (api_key auth).
 func (a *Adapter) resolveCredentials(ctx context.Context, id providers.EgressIdentity) (aws.Credentials, error) {
 	if a.creds != nil {
 		return a.creds.Retrieve(ctx)

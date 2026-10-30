@@ -1,8 +1,7 @@
-// Package oaitools maps the barrier's provider-neutral tool shapes to and from
-// the OpenAI Chat Completions wire schema, shared by the OpenAI and Azure OpenAI
-// adapters (which speak the same tool format). It operates purely on the neutral
-// allowlisted payload and the decoded response; it has no access to Caller
-// identity, the Caller Key, or the Reveal flag.
+// Package oaitools maps the Membrane's provider-neutral tool shapes to and from
+// the OpenAI Chat Completions wire format. The OpenAI and Azure OpenAI adapters
+// share it. It sees only the allowlisted payload and the decoded response, never
+// Caller identity, the Caller Key, or the Reveal flag.
 //
 // Canonical (neutral) shapes:
 //   - tools:      [{name, description?, parameters?}]
@@ -20,8 +19,7 @@ import (
 )
 
 // Tools converts the neutral tools payload value into the OpenAI tools shape.
-// Unexpected shapes are returned unchanged (fail-open to the provider's own
-// validation, never a panic).
+// Unexpected shapes are returned unchanged and left to the Provider to reject.
 func Tools(raw any) any {
 	arr, ok := raw.([]any)
 	if !ok {
@@ -47,8 +45,7 @@ func Tools(raw any) any {
 }
 
 // Messages converts any assistant message carrying neutral tool_calls into the
-// OpenAI tool_calls shape. Messages without tool_calls are passed through
-// unchanged, so a non-tool conversation serializes identically to before.
+// OpenAI tool_calls shape. Messages without tool_calls pass through unchanged.
 func Messages(raw any) any {
 	arr, ok := raw.([]any)
 	if !ok {
@@ -137,7 +134,7 @@ type WireToolCallDelta struct {
 }
 
 // DeltaToCanonical converts streamed OpenAI delta.tool_calls fragments into
-// provider-neutral tool-call deltas (reassembled by index on the Caller side).
+// provider-neutral tool-call deltas. The Caller side reassembles them by index.
 func DeltaToCanonical(ds []WireToolCallDelta) []types.ToolCallDelta {
 	if len(ds) == 0 {
 		return nil

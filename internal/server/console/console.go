@@ -1,13 +1,11 @@
-// Package console implements the Membrane Console: a built-in, self-hosted
-// operator UI served on a SEPARATE admin listener, never on the data-plane
-// (/v1/chat) mux. It is a read-mostly operability surface (status, health,
-// metrics) in this slice (console phases C0–C1); later slices add config
-// editing on top of the same validate → atomic write → reload pipeline.
+// Package console implements the Membrane Console, a self-hosted operator UI
+// and control API served on a separate admin listener, never on the data-plane
+// mux. Config edits go through validation, an atomic write, and a reload.
 //
-// Isolation is structural: this package never constructs a SanitizedRequest,
-// never mounts the egress handler, and never emits caller/org identity or any
-// secret. Secrets (e.g. the admin token) exist ONLY by reference. Access binds
-// to loopback by default; non-local requests require the configured admin token.
+// The package never constructs a SanitizedRequest, never mounts the egress
+// handler, and never emits caller or org identity or any secret. Secrets such
+// as the admin token are held by reference only. Loopback clients are always
+// allowed; other clients need the configured admin token.
 package console
 
 import (
@@ -21,15 +19,14 @@ import (
 	"github.com/inferencepath/membrane/internal/observability/metrics"
 )
 
-// StatusProvider reports the data-plane server's readiness. The console reads it
-// from its own listener to render liveness/readiness without touching the egress
-// path. *server.Server satisfies this.
+// StatusProvider reports the data-plane server's readiness without touching the
+// egress path. *server.Server satisfies it.
 type StatusProvider interface {
 	Ready() (bool, string)
 }
 
 // MetricsProvider supplies an identity-free snapshot of the metrics registry.
-// *metrics.Registry satisfies this.
+// *metrics.Registry satisfies it.
 type MetricsProvider interface {
 	Snapshot() metrics.Snapshot
 }
@@ -41,47 +38,41 @@ type Version struct {
 	BuildTime string `json:"buildTime,omitempty"`
 }
 
-// Config wires the console's (read-only) dependencies.
+// Config holds the console's dependencies. Every optional dependency that is
+// nil makes its endpoints return 503.
 type Config struct {
-	// Status is the data-plane server's readiness source (required).
+	// Status is the data-plane readiness source. Required.
 	Status StatusProvider
-	// Metrics is the identity-free metrics snapshot source (required).
+	// Metrics is the metrics snapshot source. Required.
 	Metrics MetricsProvider
-	// Config provides read-only, identity-free config views. Optional: when nil,
-	// the config read endpoints return 503 (not available).
+	// Config provides read-only, identity-free config views.
 	Config ConfigSource
-	// Editor applies config edits (validate → atomic write → reload). Optional:
-	// when nil, the edit endpoints return 503 (e.g. not in reloadable mode).
+	// Editor applies config edits. It is nil when config is not reloadable.
 	Editor ConfigEditor
-	// Bundle provides declarative export/apply (the `deck`-equivalent). Optional:
-	// when nil, the bundle endpoints return 503.
+	// Bundle provides declarative config export, diff, and apply.
 	Bundle ConfigBundle
-	// PathwayCreator atomically creates a pathway + its permeability policy in one
-	// transaction (the Pathways wizard). Optional: when nil, the endpoint returns
-	// 503.
+	// PathwayCreator creates a pathway and its permeability policy in one
+	// transaction for the Pathways wizard.
 	PathwayCreator PathwayCreator
-	// Operations supplies the read-only operations catalog (routes + per-operation
-	// Permeability field palettes) that the Pathways wizard uses to filter
-	// selectable fields by operation. Optional: when nil, the endpoint returns 503.
+	// Operations supplies the operations catalog the Pathways wizard uses to
+	// filter Permeability fields by operation.
 	Operations OperationCatalog
-	// Callers creates/deletes Caller Keys (the app layer hashes the secret and
-	// stores only the hash). Optional: when nil, the endpoints return 503.
+	// Callers creates and deletes Caller Keys. Only the secret's hash is stored.
 	Callers CallerManager
-	// Secrets manages the sealed secret store (set/rotate/delete values entered by
-	// the operator, referenced from credentials as `secret:<name>`). Optional:
-	// when nil, the secrets endpoints return 503 (sealed store disabled).
+	// Secrets manages the sealed secret store, whose values credentials
+	// reference as secret:<name>. It is nil when the sealed store is disabled.
 	Secrets SecretManager
-	// Providers is the consolidated provider-setup port (seal a key + wire its
-	// credential atomically). The primary Providers screen uses it. Optional: when
-	// nil, the provider endpoints return 503 (sealed store disabled).
+	// Providers seals a provider key and wires its credential in one step. It
+	// is nil when the sealed store is disabled.
 	Providers ProviderManager
-	// Audit provides read-only access to the Interior-only usage audit records.
-	// Optional: when nil, the usage-audit endpoint returns 503 (e.g. no file sink).
+	// Audit reads the Interior-only usage audit records.
 	Audit AuditSource
-	// ChatBaseURL is the data-plane base URL (e.g. http://127.0.0.1:8080) the
-	// Test Pathway action posts to. The console acts as a plain client of the
-	// egress path (operator-supplied Caller Key); it never mounts the egress
-	// handler. Empty disables the Test Pathway endpoint (503).
+	// Panels contributes extension panels. When nil, the panel list is empty.
+	Panels PanelProvider
+	// ChatBaseURL is the data-plane base URL (e.g. http://127.0.0.1:8080) that
+	// Test Pathway posts to with an operator-supplied Caller Key. The console
+	// acts as an ordinary client and never mounts the egress handler. Empty
+	// disables Test Pathway.
 	ChatBaseURL string
 	// Version is the build metadata to surface.
 	Version Version
@@ -98,8 +89,8 @@ type Console struct {
 	admin *adminAudit
 }
 
-// New constructs a Console. The returned handler (via Handler) serves the
-// embedded UI at "/" and the read-only control API under "/api/console/".
+// New constructs a Console. Its handler serves the embedded UI at "/" and the
+// control API under "/api/console/".
 func New(cfg Config) *Console {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(discard{}, nil))
@@ -136,6 +127,9 @@ func New(cfg Config) *Console {
 	mux.HandleFunc("DELETE /api/console/providers/{name}", c.handleProviderDelete)
 	mux.HandleFunc("GET /api/console/audit/usage", c.handleAuditUsage)
 	mux.HandleFunc("GET /api/console/audit/admin", c.handleAuditAdmin)
+	mux.HandleFunc("GET /api/console/panels", c.handlePanels)
+	mux.HandleFunc("/api/console/ext/{id}", c.handleExt)
+	mux.HandleFunc("/api/console/ext/{id}/{rest...}", c.handleExt)
 	mux.Handle("/", staticHandler())
 	c.mux = mux
 	return c
@@ -146,19 +140,17 @@ func (c *Console) Handler() http.Handler {
 	return c.authMiddleware(c.mux)
 }
 
-// apiPrefix is the path prefix for the console's control API. Everything under
-// it requires admin authorization; everything else (the embedded SPA shell +
-// assets) is served publicly so the UI can render a login screen.
+// apiPrefix is the control API path prefix. Paths under it require admin
+// authorization; the SPA shell and assets are public so the UI can show a
+// login screen.
 const apiPrefix = "/api/console/"
 
-// authMiddleware enforces admin access on the control API: loopback clients are
-// always allowed; any non-local client must present the configured admin token;
-// with no token configured, non-local access is refused (fail closed).
+// authMiddleware enforces admin access on the control API. Loopback clients are
+// allowed; other clients must present the admin token, and with no token
+// configured they are refused (fail closed).
 //
-// The static console UI (the login page, HTML, CSS, JS) is PUBLIC — it carries
-// no secrets or data, and serving it unauthenticated lets the SPA present a
-// login prompt when the API returns 401 (the Jenkins/Neo4j model). All sensitive
-// data stays behind the authorized API under apiPrefix.
+// The static UI holds no secrets or data. Serving it unauthenticated lets the
+// SPA show a login prompt when the API returns 401.
 func (c *Console) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, apiPrefix) {
@@ -226,7 +218,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// discard is an io.Writer that drops all output (for the nil-logger default).
+// discard is an io.Writer that drops all output.
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }

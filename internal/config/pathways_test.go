@@ -80,7 +80,7 @@ pathways:
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Default provider defaults to the first listed provider when omitted.
+	// An omitted default_provider means the first listed provider.
 	if spec.Routes[0].DefaultProvider != "openai-main" {
 		t.Fatalf("default provider = %q, want openai-main", spec.Routes[0].DefaultProvider)
 	}
@@ -159,7 +159,7 @@ func TestParseCredentialsRejects(t *testing.T) {
 		{"inline secret", "version: 1\nkeyring: [{name: a, secret_ref: sk-inline}]", "inline secrets are not allowed"},
 		{"dup name", "version: 1\nkeyring: [{name: a, secret_ref: env:X}, {name: a, secret_ref: env:Y}]", "duplicate name"},
 		{"bad name", "version: 1\nkeyring: [{name: BAD, secret_ref: env:X}]", "invalid name"},
-		// pools must NOT appear in a credentials-only file.
+		// pools is not a credentials field.
 		{"pools rejected", "version: 1\nkeyring: [{name: a, secret_ref: env:X}]\npools: [{pathway: chat, targets: []}]", "parse"},
 		{"bad next_secret_ref", "version: 1\nkeyring: [{name: a, secret_ref: env:X, next_secret_ref: inline}]", "next_secret_ref"},
 	}

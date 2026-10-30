@@ -7,13 +7,8 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// This file maps the console's structured form JSON (the same payloads the SPA
-// posts) into store rows. Forms are the primary edit surface; they carry no
-// secret values. The callers form is special: it edits only allowlists, so it
-// returns an allowOnly map that the apply path writes via SetCallerAllow,
-// leaving hashes untouched.
-
-// --- form models (match the SPA payloads) --------------------------------
+// Form payloads posted by the Console UI. They carry no secret values. The
+// callers form edits allowlists only.
 
 type callerForm struct {
 	KeyID string   `json:"keyId"`
@@ -39,10 +34,10 @@ type permeabilityCapForm struct {
 	InboundOnReveal []string `json:"inboundOnReveal"`
 }
 
-// rowsFromForm converts a structured form into store rows. For callers it also
-// returns an allowOnly map (keyID→allow) signalling the allowlist-only write
-// path; for every other kind allowOnly is nil and rows carry the full desired
-// state for that kind.
+// rowsFromForm converts a form into the full set of store rows for kind. For
+// callers it also returns allowOnly, mapping each key ID to its allowlist, so
+// the apply path can write it with SetCallerAllow. For other kinds allowOnly
+// is nil.
 func (a *Adapter) rowsFromForm(kind string, form []byte) (rows any, allowOnly map[string][]string, err error) {
 	switch kind {
 	case store.KindPathways:
@@ -70,7 +65,7 @@ func (a *Adapter) rowsFromForm(kind string, form []byte) (rows any, allowOnly ma
 		if err := json.Unmarshal(form, &body); err != nil {
 			return nil, nil, fmt.Errorf("invalid credentials form: %w", err)
 		}
-		// Preserve next_secret_ref for existing names (rotation is not edited here).
+		// The form does not edit rotation, so keep each existing next_secret_ref.
 		next := a.currentNextRefs()
 		out := make([]store.CredentialRow, 0, len(body.Credentials))
 		for _, c := range body.Credentials {
@@ -105,9 +100,8 @@ func (a *Adapter) rowsFromForm(kind string, form []byte) (rows any, allowOnly ma
 		if err := json.Unmarshal(form, &body); err != nil {
 			return nil, nil, fmt.Errorf("invalid callers form: %w", err)
 		}
-		// Build the candidate full caller set (for validation) from current rows
-		// with the submitted allowlists applied, plus an allowOnly map used by the
-		// write path so hashes are never touched.
+		// Apply the submitted allowlists to the current rows to get the full
+		// caller set for validation.
 		current, rerr := a.st.ReadCallers()
 		if rerr != nil {
 			return nil, nil, rerr
@@ -134,8 +128,7 @@ func (a *Adapter) rowsFromForm(kind string, form []byte) (rows any, allowOnly ma
 	}
 }
 
-// currentNextRefs returns name→next_secret_ref for existing credentials so a
-// form edit preserves rotation settings it does not manage.
+// currentNextRefs maps each credential name to its next_secret_ref, if set.
 func (a *Adapter) currentNextRefs() map[string]string {
 	out := map[string]string{}
 	rows, err := a.st.ReadCredentials()

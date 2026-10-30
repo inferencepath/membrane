@@ -39,14 +39,14 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 
-	// System role lifted to the top-level field; not left in messages.
+	// The system turn moves to the top-level field.
 	if gotBody["system"] != "be terse" {
 		t.Errorf("system = %v", gotBody["system"])
 	}
 	if msgs, _ := gotBody["messages"].([]any); len(msgs) != 1 {
 		t.Errorf("messages = %v (system should be lifted out)", gotBody["messages"])
 	}
-	// Neutral tools → Anthropic input_schema shape.
+	// Neutral tools map to the Anthropic input_schema shape.
 	tool0 := gotBody["tools"].([]any)[0].(map[string]any)
 	if tool0["name"] != "get_weather" {
 		t.Errorf("tool name = %v", tool0["name"])
@@ -58,7 +58,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Errorf("tool_choice = %v", gotBody["tool_choice"])
 	}
 
-	// Response tool_use → canonical; stop_reason normalized.
+	// tool_use maps to canonical tool calls and stop_reason is normalized.
 	if len(resp.Message.ToolCalls) != 1 {
 		t.Fatalf("tool_calls = %+v", resp.Message.ToolCalls)
 	}

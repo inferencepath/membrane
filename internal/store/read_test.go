@@ -7,8 +7,7 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// seedValid inserts a complete, valid single-pathway configuration and
-// returns the open store. Secrets are references/hashes only.
+// seedValid opens a store holding a valid single-pathway configuration.
 func seedValid(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), store.DBFileName))
@@ -89,8 +88,7 @@ func TestReadPermeabilitySplitsLists(t *testing.T) {
 }
 
 func TestJoinListRoundTrip(t *testing.T) {
-	// JoinList renders the newline-delimited storage form that ReadPermeability
-	// splits back out. Store it and read it to prove the round-trip.
+	// Values stored with JoinList must read back unchanged.
 	s := openTemp(t)
 	defer s.Close()
 	if _, err := s.DB().Exec(

@@ -16,8 +16,8 @@ func TestUpstreamStatusError(t *testing.T) {
 	if !strings.Contains(msg, "503") {
 		t.Fatalf("Error() = %q, want it to carry the status", msg)
 	}
-	// The message must stay provider-neutral: no provider body or identity, even
-	// though the Provider family is retained on the struct for Reveal gating.
+	// The message stays provider-neutral even though the struct records the
+	// family for Reveal.
 	for _, forbidden := range []string{"openai", "anthropic"} {
 		if strings.Contains(strings.ToLower(msg), forbidden) {
 			t.Fatalf("Error() leaked provider identity %q: %q", forbidden, msg)

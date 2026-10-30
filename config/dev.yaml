@@ -1,14 +1,14 @@
-# Membrane — local development configuration (managed mode).
+# Membrane local development configuration (managed mode).
 #
 # A loopback-only profile for running Membrane on your workstation. All
 # operational config lives in the managed state store under data_dir; this file
-# carries only bootstrap settings. Secrets are NEVER inline.
+# carries only bootstrap settings. Secrets are never inline.
 #
 # Quick start:
 #   mkdir -p .membrane
 #   export OPENAI_API_KEY=local-dev            # placeholder; local servers ignore it
 #   make run CONFIG=./config/dev.yaml          # or: go run ./cmd/membrane --config ./config/dev.yaml --seed ./config/seed.example.yaml
-#   # then open the Console at http://127.0.0.1:7474
+#   # then open the Console at http://127.0.0.1:8300
 #
 # To point `chat` at a local OpenAI-compatible server (Ollama :11434, vLLM/LM
 # Studio :8000/:1234), edit the pathway in the Console or apply a bundle:
@@ -29,4 +29,4 @@ audit:
 # access.
 console:
   enabled: true
-  address: "127.0.0.1:7474"
+  address: "127.0.0.1:8300"

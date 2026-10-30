@@ -18,8 +18,8 @@ import (
 
 const demoHash = "458d6534a760ed4c8c2f1c8f86a517572cb56fa6a0f8554efdda2cb8532a4816"
 
-// newServer starts an in-process Console backed by a seeded store with the real
-// bundle adapter (and cross-kind validator), returning its base URL.
+// newServer starts an in-process Console over a seeded store and returns its
+// base URL.
 func newServer(t *testing.T, withBundle bool) string {
 	t.Helper()
 	t.Setenv("TEST_CLI_KEY", "egress-token")
@@ -104,14 +104,14 @@ func TestDiffNoChangeThenChanged(t *testing.T) {
 	url := newServer(t, true)
 	bundle := exportBundle(t, url)
 
-	// Identical bundle → no change, exit 0.
+	// An identical bundle reports no change and exits 0.
 	path := writeTemp(t, bundle)
 	code, out, _ := run(t, []string{"diff", "-f", path, "--console-url", url})
 	if code != 0 || !strings.Contains(out, "no changes") {
 		t.Fatalf("diff identical = %d out=%s", code, out)
 	}
 
-	// Changed model → pathways listed as changed.
+	// A changed model lists pathways as changed.
 	changed := strings.ReplaceAll(bundle, "gpt-4o-mini", "gpt-4o")
 	path = writeTemp(t, changed)
 	code, out, _ = run(t, []string{"diff", "-f", path, "--console-url", url})
@@ -166,8 +166,7 @@ func TestApplyDryRunDoesNotWrite(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "changes:") || !strings.Contains(errOut, "dry-run") {
 		t.Fatalf("dry-run = %d out=%s err=%s", code, out, errOut)
 	}
-	// The live store must be unchanged: a subsequent diff of the ORIGINAL bundle
-	// still reports no change.
+	// The live store is unchanged: diffing the original bundle reports no change.
 	orig := writeTemp(t, bundle)
 	code, out, _ = run(t, []string{"diff", "-f", orig, "--console-url", url})
 	if code != 0 || !strings.Contains(out, "no changes") {
@@ -212,7 +211,7 @@ func TestTokenRefUnresolvableFails(t *testing.T) {
 func TestTokenRefResolvesAndAuthorizes(t *testing.T) {
 	t.Setenv("CLI_ADMIN_TOKEN", "s3cr3t")
 	url := newServer(t, true)
-	// Loopback is always authorized, but this exercises token resolution + header.
+	// Loopback needs no token; this exercises token resolution and the header.
 	code, _, errOut := run(t, []string{"export", "--console-url", url, "--token-ref", "env:CLI_ADMIN_TOKEN"})
 	if code != 0 {
 		t.Fatalf("token-ref export = %d err=%s", code, errOut)
@@ -242,7 +241,7 @@ func TestReadInputMissingFile(t *testing.T) {
 	}
 }
 
-// --- helpers ---
+// Helpers.
 
 func exportBundle(t *testing.T, url string) string {
 	t.Helper()

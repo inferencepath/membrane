@@ -40,7 +40,7 @@ func TestResolverOperation(t *testing.T) {
 	r.SetPolicy(map[types.PathwayID]resolve.PathwayPolicy{
 		"chat":   {Operation: types.OperationChat, DefaultProvider: "openai"},
 		"embed":  {Operation: types.OperationEmbeddings, DefaultProvider: "openai"},
-		"legacy": {DefaultProvider: "openai"}, // no operation set ⇒ defaults to chat
+		"legacy": {DefaultProvider: "openai"}, // no operation set, so it defaults to chat
 	})
 
 	if op, ok := r.Operation("chat"); !ok || op != types.OperationChat {

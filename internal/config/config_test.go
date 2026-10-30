@@ -41,7 +41,7 @@ func TestParseConsoleDefaultsDisabled(t *testing.T) {
 	if cfg.Console.Enabled {
 		t.Errorf("console should be disabled by default")
 	}
-	if cfg.Console.Address != "127.0.0.1:7474" {
+	if cfg.Console.Address != "127.0.0.1:8300" {
 		t.Errorf("default console address = %q", cfg.Console.Address)
 	}
 }
@@ -77,7 +77,7 @@ func TestParseConsoleRejectsInlineToken(t *testing.T) {
 }
 
 func TestParseRequiresDataDir(t *testing.T) {
-	// No data_dir → error naming data_dir (managed mode is the only model).
+	// A missing data_dir is an error that names the field.
 	_, err := config.Parse([]byte("server:\n  address: \":8080\"\n"))
 	if err == nil || !strings.Contains(err.Error(), "data_dir") {
 		t.Fatalf("expected data_dir requirement error, got %v", err)

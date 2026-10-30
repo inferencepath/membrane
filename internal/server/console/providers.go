@@ -5,9 +5,8 @@ import (
 	"net/http"
 )
 
-// providersGuard enforces an available ProviderManager. A nil manager means the
-// sealed secret store is disabled (no master key configured), so provider setup
-// from the Console is unavailable.
+// providersGuard returns the ProviderManager, or writes 503 and returns false
+// when the sealed store is disabled.
 func (c *Console) providersGuard(w http.ResponseWriter) (ProviderManager, bool) {
 	if c.cfg.Providers == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -18,8 +17,8 @@ func (c *Console) providersGuard(w http.ResponseWriter) (ProviderManager, bool) 
 	return c.cfg.Providers, true
 }
 
-// handleProvidersList serves the provider list (references + sealed status + which
-// pathways use each). Never a value.
+// handleProvidersList serves each provider's reference, sealed status, and the
+// pathways that use it.
 func (c *Console) handleProvidersList(w http.ResponseWriter, _ *http.Request) {
 	mgr, ok := c.providersGuard(w)
 	if !ok {
@@ -36,9 +35,8 @@ func (c *Console) handleProvidersList(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// handleProviderSet atomically seals a provider's key and upserts the provider
-// definition (family + connection facts + the `secret:<name>` reference that
-// routing resolves). The response is secret-free.
+// handleProviderSet seals a provider's key and upserts its definition, including
+// the secret:<name> reference routing resolves, in one transaction.
 func (c *Console) handleProviderSet(w http.ResponseWriter, r *http.Request) {
 	mgr, ok := c.providersGuard(w)
 	if !ok {
@@ -62,8 +60,8 @@ func (c *Console) handleProviderSet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"applied": true, "name": body.Name})
 }
 
-// handleProviderDelete removes a provider (credential + sealed secret). A provider
-// still referenced by a pathway target is refused (409) so routing never dangles.
+// handleProviderDelete removes a provider's credential and sealed secret. A
+// provider still referenced by a pathway target is refused with 409.
 func (c *Console) handleProviderDelete(w http.ResponseWriter, r *http.Request) {
 	mgr, ok := c.providersGuard(w)
 	if !ok {

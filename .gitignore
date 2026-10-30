@@ -22,12 +22,11 @@ go.work.sum
 .env
 .env.*
 !.env.example
-# Secret *value* files (secrets.yaml / secrets.json / secrets.env / ...). This is
-# deliberately NOT a bare `secrets.*` glob: that also matched Go source such as
-# `secrets.go` (the sealed-secret store code), silently excluding it from the
-# repository. Keep this restricted to data formats and re-include source.
+# Ignore secret *data* files (secrets.yaml / secrets.json / secrets.env, etc.)
+# but never the legitimate Go source files named secrets.go.
 secrets.*
 !secrets.go
+!**/secrets.go
 
 # Editor / OS
 .idea/

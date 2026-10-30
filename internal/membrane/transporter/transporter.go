@@ -1,14 +1,13 @@
-// Package transporter defines the Membrane crossing. The Transporter is the only
-// mover across the Membrane and, by its signature, accepts ONLY a
-// scrub.SanitizedRequest — a non-sanitized request cannot be transported.
+// Package transporter implements the Membrane crossing. The Transporter is the
+// only path across the Membrane, and it accepts only a scrub.SanitizedRequest.
 //
-// The concrete Transporter (Membrane) owns, per Pathway, a Pool of ordered
-// Provider targets. For each request it selects a target (priority or
-// round-robin), resolves that target's Egress Identity from the Keyring, and
-// dispatches the allowlisted payload — attaching identity only here, at/after
-// the Membrane. On a retryable failure it fails over to the next healthy target;
-// a per-target circuit breaker skips targets that are failing. Streaming fails
-// over only before the first byte is relayed.
+// Membrane, the concrete Transporter, keeps an ordered pool of Provider
+// targets per Pathway. For each request it picks a target by priority or
+// round-robin, resolves the target's Egress Identity from the Keyring, and
+// sends the allowlisted payload. Egress Identity is attached only here. On a
+// retryable failure it moves to the next healthy target, and a per-target
+// circuit breaker skips targets that keep failing. Streaming fails over only
+// before the first byte is relayed.
 package transporter
 
 import (
@@ -28,19 +27,19 @@ import (
 // ErrNotImplemented is returned by the stub Transporter.
 var ErrNotImplemented = errors.New("transporter: not implemented")
 
-// ErrNoProvider indicates no pool/target is available to serve the request.
+// ErrNoProvider indicates that no target is available to serve the request.
 var ErrNoProvider = errors.New("transporter: no provider adapter for target")
 
-// Transporter carries a SanitizedRequest across the Membrane, attaching the
-// Egress Identity and dispatching to a selected Provider. Both methods accept
-// only scrub.SanitizedRequest, so a non-sanitized request cannot be transported.
+// Transporter carries a SanitizedRequest across the Membrane, attaches the
+// Egress Identity, and dispatches it to a Provider. Both methods take a
+// scrub.SanitizedRequest, so an unscrubbed request cannot be sent.
 type Transporter interface {
 	Transport(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalResponse, error)
 	TransportStream(ctx context.Context, req scrub.SanitizedRequest, emit func(types.StreamChunk) error) error
 }
 
-// KeyringResolver resolves an Egress Identity by credential reference. It is
-// satisfied by the exterior Keyring; defined here to avoid importing it.
+// KeyringResolver resolves an Egress Identity by credential reference. The
+// Exterior Keyring implements it.
 type KeyringResolver interface {
 	Resolve(ref string) (providers.EgressIdentity, error)
 }
@@ -49,21 +48,21 @@ type KeyringResolver interface {
 type Strategy string
 
 const (
-	// StrategyPriority always prefers the lowest-priority-number healthy target.
+	// StrategyPriority prefers the healthy target with the lowest priority
+	// number.
 	StrategyPriority Strategy = "priority"
 	// StrategyRoundRobin cycles across healthy targets in priority order.
 	StrategyRoundRobin Strategy = "round_robin"
 )
 
 // TargetSpec describes one pooled egress target: its adapter, the Keyring
-// reference for its Egress Identity, the resolved model, and per-target
-// timeouts. Endpoints/regions/deployments are baked into the adapter and never
-// cross back into the Interior.
+// reference for its Egress Identity, the model, and timeouts. Endpoints,
+// regions, and deployments live in the adapter and do not reach the Interior.
 type TargetSpec struct {
 	Adapter providers.Provider
-	// ProviderName is the configured provider's name (the admin-chosen key, e.g.
-	// "openai-main"). A caller cascade tier selects a target by this name; it is
-	// never caller/org identity and never crosses the Membrane to a Provider.
+	// ProviderName is the operator's name for the configured provider, such
+	// as "openai-main". A Caller's cascade selects targets by this name. It is
+	// not Caller identity and is not sent to the Provider.
 	ProviderName string
 	KeyringRef   string
 	Model        string
@@ -71,9 +70,8 @@ type TargetSpec struct {
 	TimeoutTotal time.Duration
 	TimeoutIdle  time.Duration
 	// AmbientAuth marks a target whose adapter authenticates from an ambient
-	// source (IAM role / managed identity) baked in at build time, so there is
-	// no keyring credential to resolve. The Egress Identity passed to the adapter
-	// is empty in that case.
+	// source such as an IAM role or managed identity. There is no Keyring
+	// credential to resolve, and the adapter gets an empty Egress Identity.
 	AmbientAuth bool
 }
 
@@ -84,13 +82,11 @@ type PoolSpec struct {
 }
 
 // BackoffPolicy configures the per-target circuit breaker. A zero
-// BreakerThreshold disables the breaker (targets are always attempted).
+// BreakerThreshold disables the breaker.
 //
-// The open-state cooldown escalates with the number of consecutive breaker
-// trips: when Base > 0 the Nth consecutive open waits Base*Factor^(N-1), capped
-// at Max; this backs off a persistently failing target so repeated half-open
-// probes do not hammer it. When Base <= 0 the fixed BreakerCooldown is used for
-// every trip (no escalation).
+// When Base > 0 the cooldown grows with consecutive trips: the Nth waits
+// Base*Factor^(N-1), capped at Max, so half-open probes back off from a target
+// that keeps failing. When Base <= 0 every trip uses BreakerCooldown.
 type BackoffPolicy struct {
 	Base             time.Duration
 	Factor           float64
@@ -99,8 +95,8 @@ type BackoffPolicy struct {
 	BreakerCooldown  time.Duration
 }
 
-// cooldownFor returns the open-state cooldown for the given consecutive trip
-// count (1-based). Without an escalation Base it is the fixed BreakerCooldown.
+// cooldownFor returns the open-state cooldown after trips consecutive trips,
+// counting from 1.
 func (b BackoffPolicy) cooldownFor(trips int) time.Duration {
 	if b.Base <= 0 {
 		return b.BreakerCooldown
@@ -120,23 +116,20 @@ func (b BackoffPolicy) cooldownFor(trips int) time.Duration {
 	return d
 }
 
-// Observer receives identity-free resilience signals (failover count, target
-// health). The provider argument is an Exterior Provider FAMILY label only; it
-// never carries caller identity and never crosses the Membrane to a Provider.
+// Observer receives failover and target health signals. The provider argument
+// is the Provider family label; no Caller identity is passed.
 type Observer interface {
 	ObserveFailover(pathway, provider string)
 	ObserveHealth(pathway, provider string, healthy bool)
 }
 
-// PlanTier is one tier of a caller-driven cascade: which configured provider to
-// use (by name) and which of that provider's allowed models. The chat handler
-// builds the ordered plan (ascending cascade) after validating every tier
-// against the pathway allowlist, and attaches it to the request context via
-// WithPlan. An empty Model means the provider's default model.
+// PlanTier is one step of a Caller's cascade: a configured provider, by name,
+// and one of its allowed models. An empty Model means the provider's default.
+// The handler validates each tier against the Pathway, orders them, and
+// attaches the plan with WithPlan.
 //
-// The plan is an Interior-only routing control: it names providers/models by
-// configured key and never carries caller identity, so it is safe to pass
-// alongside a SanitizedRequest without crossing the Membrane into a payload.
+// A plan names providers and models by configured key and holds no Caller
+// identity. It travels in the context, not in the payload.
 type PlanTier struct {
 	Provider string
 	Model    string
@@ -144,9 +137,9 @@ type PlanTier struct {
 
 type planCtxKey struct{}
 
-// WithPlan returns a context carrying an ordered caller cascade plan. When
-// present, Transport/TransportStream attempt the named providers in order
-// instead of the Pathway's default pool ordering.
+// WithPlan returns a context carrying a Caller's cascade plan. When present,
+// Transport and TransportStream try the named providers in plan order instead
+// of the Pathway's pool order.
 func WithPlan(ctx context.Context, plan []PlanTier) context.Context {
 	if len(plan) == 0 {
 		return ctx
@@ -180,16 +173,15 @@ type boundTarget struct {
 	health       *targetHealth
 }
 
-// attempt is one dispatch try: a bound target plus the model to request from it
-// (which may be a caller-chosen allowed model overriding the target default).
+// attempt is one dispatch try: a target and the model to request, which may be
+// a Caller-chosen model instead of the target default.
 type attempt struct {
 	t     *boundTarget
 	model string
 }
 
-// identity resolves the Egress Identity for a target. Ambient-auth targets have
-// no keyring credential; their adapter authenticates from a baked-in ambient
-// source, so an empty identity is returned without touching the keyring.
+// identity resolves the Egress Identity for t. Ambient-auth targets get an
+// empty identity without a Keyring lookup.
 func (m *Membrane) identity(t *boundTarget) (providers.EgressIdentity, error) {
 	if t.ambientAuth {
 		return providers.EgressIdentity{}, nil
@@ -212,8 +204,8 @@ func WithBackoff(b BackoffPolicy) Option { return func(m *Membrane) { m.backoff 
 // WithClock overrides the clock (for deterministic breaker tests).
 func WithClock(now func() time.Time) Option { return func(m *Membrane) { m.now = now } }
 
-// WithObserver attaches a resilience Observer (failover/health telemetry). A nil
-// Observer is ignored (the default no-op is kept).
+// WithObserver sets the Observer for failover and health signals. A nil
+// Observer is ignored.
 func WithObserver(o Observer) Option {
 	return func(m *Membrane) {
 		if o != nil {
@@ -222,9 +214,8 @@ func WithObserver(o Observer) Option {
 	}
 }
 
-// New returns a pool-aware Membrane Transporter. For each Pathway the targets
-// are ordered by priority (ascending). It is the single mover across the
-// Membrane.
+// New returns a Membrane Transporter for the given pools. Each Pathway's
+// targets are sorted by ascending priority.
 func New(pools map[types.PathwayID]PoolSpec, keyring KeyringResolver, opts ...Option) *Membrane {
 	m := &Membrane{
 		pools:   make(map[types.PathwayID]*routedPool, len(pools)),
@@ -263,11 +254,10 @@ func New(pools map[types.PathwayID]PoolSpec, keyring KeyringResolver, opts ...Op
 	return m
 }
 
-// attempts returns the ordered dispatch list for a request. When the context
-// carries a caller cascade plan, it resolves each tier's provider by name
-// (sticky model: the caller-chosen allowed model, or the target default) in
-// plan order. Otherwise it falls back to the Pathway pool's selection order,
-// requesting each target's default model.
+// attempts returns the ordered dispatch list for a request. With a cascade plan
+// in ctx it resolves each tier's provider by name, using the tier's model or
+// the target default. Otherwise it uses the pool's selection order and each
+// target's default model.
 func (m *Membrane) attempts(ctx context.Context, capID types.PathwayID) []attempt {
 	if plan := planFromContext(ctx); len(plan) > 0 {
 		named := m.byName[capID]
@@ -317,7 +307,7 @@ func (p *routedPool) order() []*boundTarget {
 	return p.targets
 }
 
-// onFailover records an identity-free failover + unhealthy signal for a target.
+// onFailover reports a failover and marks t unhealthy.
 func (m *Membrane) onFailover(capID types.PathwayID, t *boundTarget) {
 	if m.observer == nil {
 		return
@@ -327,7 +317,7 @@ func (m *Membrane) onFailover(capID types.PathwayID, t *boundTarget) {
 	m.observer.ObserveHealth(string(capID), p, false)
 }
 
-// onHealthy records an identity-free healthy signal for a target.
+// onHealthy reports t as healthy.
 func (m *Membrane) onHealthy(capID types.PathwayID, t *boundTarget) {
 	if m.observer == nil {
 		return
@@ -392,9 +382,9 @@ func (m *Membrane) Transport(ctx context.Context, sr scrub.SanitizedRequest) (ty
 	return types.CanonicalResponse{}, lastErr
 }
 
-// TransportStream performs a streaming crossing. It fails over across the pool
-// ONLY before the first byte is relayed; once any chunk has been emitted, a
-// mid-stream failure terminates cleanly without a silent provider switch.
+// TransportStream performs a streaming crossing. It fails over only before the
+// first chunk is relayed; after that, a failure ends the stream rather than
+// silently switching providers.
 func (m *Membrane) TransportStream(ctx context.Context, sr scrub.SanitizedRequest, emit func(types.StreamChunk) error) error {
 	capID := sr.Pathway()
 	tries := m.attempts(ctx, capID)
@@ -451,16 +441,16 @@ const (
 	outcomeNoFailover
 )
 
-// classify decides whether a provider error should trigger failover. Timeouts,
-// 5xx, 429/408/409/425, and auth (401/403) are retryable (try the next target);
-// other 4xx are request-level and are returned without failover. Unknown errors
-// (e.g. transient network) are treated as retryable.
+// classify decides whether a provider error triggers failover. Timeouts, 5xx,
+// 401, 403, 408, 409, 425, and 429 move on to the next target; other 4xx
+// statuses are returned as is. Unrecognized errors, such as network failures,
+// are treated as retryable.
 func classify(err error) outcome {
 	if errors.Is(err, providers.ErrUpstreamTimeout) || errors.Is(err, context.DeadlineExceeded) {
 		return outcomeFailover
 	}
-	// Tool-calling-unsupported is a request-level incompatibility, not a transient
-	// failure: return it immediately rather than masking it via failover.
+	// Unsupported tool calling is a problem with the request, not a transient
+	// failure, so failover would only hide it.
 	if errors.Is(err, providers.ErrToolCallingUnsupported) {
 		return outcomeNoFailover
 	}
@@ -479,7 +469,7 @@ func classify(err error) outcome {
 	return outcomeFailover
 }
 
-// --- per-target circuit breaker ---
+// Per-target circuit breaker.
 
 type breakerState int
 
@@ -497,10 +487,9 @@ type targetHealth struct {
 	openedAt time.Time
 }
 
-// available reports whether the target may be attempted now. An open breaker
-// stays closed to traffic until its cooldown elapses, after which a single
-// half-open probe is permitted; while that probe is in flight the target is
-// unavailable to other requests until its outcome is recorded.
+// available reports whether the target may be tried now. An open breaker
+// rejects traffic until its cooldown elapses, then admits one half-open probe.
+// Other requests are turned away until the probe's outcome is recorded.
 func (h *targetHealth) available(now time.Time, b BackoffPolicy) bool {
 	if b.BreakerThreshold <= 0 {
 		return true
@@ -550,8 +539,7 @@ func (h *targetHealth) recordFailure(now time.Time, b BackoffPolicy) {
 	}
 }
 
-// Stub is a Transporter that performs no egress. Retained so the no-egress
-// contracts/tests remain valid.
+// Stub is a Transporter that performs no egress.
 type Stub struct{}
 
 // NewStub returns a stub Transporter.

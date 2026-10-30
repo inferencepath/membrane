@@ -6,7 +6,14 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/inferencepath/membrane/internal/daemon"
 )
+
+// run calls the daemon the way main does, with empty build info and options.
+func run(args []string) int {
+	return daemon.Run(args, daemon.BuildInfo{}, daemon.Options{})
+}
 
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
@@ -28,7 +35,7 @@ func TestRunMissingConfig(t *testing.T) {
 }
 
 // runUntilSignal starts run in a goroutine, sends SIGTERM once the signal
-// handler should be installed, and asserts a graceful exit (code 0).
+// handler should be installed, and expects exit code 0.
 func runUntilSignal(t *testing.T, args []string) {
 	t.Helper()
 	done := make(chan int, 1)
@@ -50,8 +57,8 @@ func runUntilSignal(t *testing.T, args []string) {
 	}
 }
 
-// runSIGHUPThenShutdown starts run, sends SIGHUP (to trigger a Keyring
-// rotation), then SIGTERM for a graceful exit (code 0).
+// runSIGHUPThenShutdown starts run, sends SIGHUP to trigger a Keyring
+// rotation, then sends SIGTERM and expects exit code 0.
 func runSIGHUPThenShutdown(t *testing.T, args []string) {
 	t.Helper()
 	done := make(chan int, 1)
@@ -80,7 +87,7 @@ func runSIGHUPThenShutdown(t *testing.T, args []string) {
 func TestRunInvalidConfigNoDataDir(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "membrane.yaml")
-	// No data_dir → config invalid → run returns 1 (managed mode is required).
+	// Without data_dir the config is invalid and run returns 1.
 	writeFile(t, cfgPath, "server:\n  address: \"127.0.0.1:0\"\n")
 	if code := run([]string{"--config", cfgPath}); code != 1 {
 		t.Fatalf("run without data_dir = %d, want 1", code)

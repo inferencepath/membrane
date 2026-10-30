@@ -9,10 +9,10 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// ResponsesTransporter is the responses-operation crossing. Like the other
-// operation capabilities it is a SEPARATE interface from
-// Transporter so adding an operation never forces chat-only implementations (or
-// test mocks) to change. Both methods accept ONLY a scrub.SanitizedRequest.
+// ResponsesTransporter crosses a responses request. It is separate from
+// Transporter so that adding an operation does not affect chat-only
+// implementations or test mocks. Both methods accept only a
+// scrub.SanitizedRequest.
 type ResponsesTransporter interface {
 	TransportResponses(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalResponses, error)
 	TransportResponsesStream(ctx context.Context, req scrub.SanitizedRequest, emit func(types.ResponsesStreamChunk) error) error
@@ -84,10 +84,10 @@ func (m *Membrane) TransportResponses(ctx context.Context, sr scrub.SanitizedReq
 	return types.CanonicalResponses{}, lastErr
 }
 
-// TransportResponsesStream performs a streaming responses crossing. Mirroring
-// TransportStream, it fails over across the pool ONLY before the first event is
-// relayed; once any event has been emitted, a mid-stream failure terminates
-// cleanly without a silent provider switch.
+// TransportResponsesStream performs a streaming responses crossing. Like
+// TransportStream, it fails over across the pool only before the first event is
+// relayed; after that, a mid-stream failure ends the stream rather than
+// switching providers.
 func (m *Membrane) TransportResponsesStream(ctx context.Context, sr scrub.SanitizedRequest, emit func(types.ResponsesStreamChunk) error) error {
 	capID := sr.Pathway()
 	tries := m.attempts(ctx, capID)

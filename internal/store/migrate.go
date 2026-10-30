@@ -5,10 +5,8 @@ import (
 	"fmt"
 )
 
-// migration is one forward, irreversible schema step. Steps are applied in order
-// and each bumps schema_meta.version. A tiny hand-rolled stepper keeps the
-// dependency surface minimal (no migration library) while still giving us a
-// versioned, forward-only schema we can evolve safely.
+// migration is one forward-only schema step. Steps run in order and each one
+// sets schema_meta.version.
 type migration struct {
 	version int
 	stmts   []string
@@ -20,8 +18,8 @@ var migrations = []migration{
 	{
 		version: 1,
 		stmts: []string{
-			// Routing: pathways and their prioritized targets. No secrets —
-			// targets reference a credential by keyring_ref only.
+			// Pathways and their prioritized targets. Targets reference a
+			// credential by keyring_ref and hold no secrets.
 			`CREATE TABLE pathways (
 				name     TEXT PRIMARY KEY,
 				strategy TEXT NOT NULL DEFAULT 'priority'
@@ -40,13 +38,13 @@ var migrations = []migration{
 				timeout_idle  TEXT    NOT NULL DEFAULT ''
 			)`,
 			`CREATE INDEX idx_targets_pathway ON targets(pathway)`,
-			// Credentials: references only (env:/file:/vault:) — never values.
+			// Credentials hold references (env:/file:/vault:), not values.
 			`CREATE TABLE credentials (
 				name            TEXT PRIMARY KEY,
 				secret_ref      TEXT NOT NULL,
 				next_secret_ref TEXT NOT NULL DEFAULT ''
 			)`,
-			// Callers: identity + hashed secret (never the secret itself).
+			// Callers store an identity and a hash of the secret.
 			`CREATE TABLE callers (
 				key_id      TEXT PRIMARY KEY,
 				caller_id   TEXT NOT NULL,
@@ -59,8 +57,8 @@ var migrations = []migration{
 				pathway TEXT NOT NULL,
 				PRIMARY KEY (key_id, pathway)
 			)`,
-			// Permeability policy: per-pathway logical field allowlists, stored
-			// as newline-delimited field lists (opaque to the store).
+			// Permeability policy: per-pathway field allowlists stored as
+			// newline-delimited lists, opaque to the store.
 			`CREATE TABLE permeability (
 				pathway        TEXT PRIMARY KEY,
 				outbound_allow    TEXT NOT NULL DEFAULT '',
@@ -72,12 +70,10 @@ var migrations = []migration{
 	{
 		version: 2,
 		stmts: []string{
-			// Sealed secret store: ENCRYPTED values (ciphertext + nonce) produced
-			// by internal/secrets. Unlike credentials (references) and callers
-			// (hashes), this table holds opaque encrypted bytes — never plaintext.
-			// The master key lives outside the database, so a stolen db file alone
-			// does not reveal any secret. name matches credential/keyring naming so
-			// a credential may reference a value as `secret:<name>`.
+			// v2 adds the sealed secret store: ciphertext and nonce produced by
+			// internal/secrets, never plaintext. The master key lives outside
+			// the database, so the db file alone reveals no secret. A
+			// credential references a row as secret:<name>.
 			`CREATE TABLE secrets (
 				name        TEXT PRIMARY KEY,
 				ciphertext  BLOB    NOT NULL,
@@ -91,11 +87,10 @@ var migrations = []migration{
 	{
 		version: 3,
 		stmts: []string{
-			// Providers are first-class: a provider owns everything needed to
-			// reach a vendor (family + connection facts + the sealed-key
-			// reference). Connection config no longer lives on the pathway target.
-			// secret_ref is a reference only (secret:/env:/file:/vault:); the
-			// sealed value lives in the secrets table.
+			// v3 adds providers, which hold everything needed to reach a
+			// vendor: family, connection settings, and secret_ref, a
+			// reference (secret:/env:/file:/vault:) to the credential.
+			// Connection settings move off the pathway target.
 			`CREATE TABLE providers (
 				name       TEXT PRIMARY KEY,
 				family     TEXT NOT NULL,
@@ -105,9 +100,8 @@ var migrations = []migration{
 				model      TEXT NOT NULL,
 				secret_ref TEXT NOT NULL
 			)`,
-			// A pathway target now only names the provider it routes to. No
-			// override, no fallback: one pathway → one provider. (Dev-only
-			// clean break: the old fat target table is dropped.)
+			// Targets are recreated to name only the provider a pathway routes
+			// to, one provider per pathway. Existing targets are dropped.
 			`DROP TABLE targets`,
 			`CREATE TABLE targets (
 				id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,16 +114,18 @@ var migrations = []migration{
 	{
 		version: 4,
 		stmts: []string{
-			// Providers gain an auth mode and an admin-controlled model policy.
+			// v4 adds an auth mode and a model allowlist to providers.
 			// auth_mode selects how the Exterior authenticates to the vendor:
-			//   api_key              - static sealed key (secret_ref required)
-			//   aws_default_chain    - ambient AWS IAM (role/instance/IRSA); no secret
-			//   aws_assume_role      - AssumeRole(role_arn[, external_id]); no secret
-			//   azure_managed_identity - Entra managed identity bearer token; no secret
-			// models is the newline-delimited allowlist of models a developer may
-			// use through this provider; default_model (one of them) is used when a
-			// request names no model. The single `model` column is replaced.
-			// (Dev-only clean break: the provider/target tables are recreated.)
+			//
+			//	api_key                 static sealed key (secret_ref required)
+			//	aws_default_chain       ambient AWS IAM credentials
+			//	aws_assume_role         AssumeRole with role_arn and optional external_id
+			//	azure_managed_identity  Entra managed identity token
+			//
+			// models is the newline-delimited list of allowed models and
+			// replaces the single model column; default_model is used when a
+			// request names none. The provider and target tables are recreated
+			// and existing rows are dropped.
 			`DROP TABLE targets`,
 			`DROP TABLE providers`,
 			`CREATE TABLE providers (
@@ -156,12 +152,12 @@ var migrations = []migration{
 	{
 		version: 5,
 		stmts: []string{
-			// A pathway is now an admin-attached SET of providers (one marked
-			// default) plus a cascade_allowed flag. When cascade_allowed is true a
-			// caller may supply its own ordered provider+model cascade at request
-			// time, restricted to this allowlist; otherwise the default provider's
-			// default model is used. The single-target `targets` table and the
-			// vestigial `strategy` column are retired. (Dev-only clean break.)
+			// v5 gives each pathway a set of providers, one of them the
+			// default, and a cascade_allowed flag. With cascade_allowed a
+			// caller may send its own ordered provider and model cascade,
+			// limited to that set; otherwise the default provider's default
+			// model is used. The targets table and the strategy column are
+			// dropped.
 			`DROP TABLE targets`,
 			`DROP TABLE pathways`,
 			`CREATE TABLE pathways (
@@ -180,31 +176,26 @@ var migrations = []migration{
 	{
 		version: 6,
 		stmts: []string{
-			// A pathway now declares the OPERATION it serves: the kind of
-			// egress work (chat, embeddings, rerank,
+			// v6 adds the operation a pathway serves (chat, embeddings, rerank,
 			// responses, image_generation, audio_transcription, audio_speech,
-			// moderations). Existing rows default to 'chat', so no migration of
-			// data is required and prior behavior is preserved.
+			// moderations). Existing rows default to 'chat'.
 			`ALTER TABLE pathways ADD COLUMN operation TEXT NOT NULL DEFAULT 'chat'`,
 		},
 	},
 	{
 		version: 7,
 		stmts: []string{
-			// Providers gain project/location for the Gemini Vertex AI surface:
-			// the GCP project and region that scope the Vertex
-			// endpoint, paired with the gcp_application_default (ambient OAuth)
-			// auth mode. Existing rows default to '' (AI Studio / non-Gemini
-			// families), so no data migration is required and prior behavior is
-			// preserved.
+			// v7 adds project and location to providers: the GCP project and
+			// region of a Gemini Vertex AI endpoint, used with the
+			// gcp_application_default auth mode. Existing rows default to ''.
 			`ALTER TABLE providers ADD COLUMN project TEXT NOT NULL DEFAULT ''`,
 			`ALTER TABLE providers ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
 		},
 	},
 }
 
-// migrate brings the schema up to the latest version inside a single transaction per
-// step. schema_meta holds the single-row current version.
+// migrate brings the schema up to the latest version, one transaction per
+// step. schema_meta holds the current version in a single row.
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(
 		`CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL)`,
@@ -256,7 +247,6 @@ func (s *Store) applyStep(m migration) error {
 			return fmt.Errorf("statement: %w", err)
 		}
 	}
-	// Single-row schema_meta: delete-then-insert keeps it to one row.
 	if _, err := tx.Exec(`DELETE FROM schema_meta`); err != nil {
 		return err
 	}

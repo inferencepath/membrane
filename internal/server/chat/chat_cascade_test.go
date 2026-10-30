@@ -20,8 +20,8 @@ import (
 	"github.com/inferencepath/membrane/test/harness"
 )
 
-// recordingAdapter is a minimal provider adapter that records the requested
-// model and optionally fails to drive cascade failover.
+// recordingAdapter records the requested model and can fail on demand to
+// trigger cascade failover.
 type recordingAdapter struct {
 	id       types.ProviderID
 	model    string
@@ -85,7 +85,8 @@ func TestChatCascadeDefaultWhenDisallowed(t *testing.T) {
 	ts := httptest.NewServer(cascadeHandler(t, false, openai, bedrock))
 	defer ts.Close()
 
-	// cascade_allowed=false: targets are ignored, default provider+model used.
+	// Without cascade_allowed, targets are ignored and the bound provider and
+	// model are used.
 	body := `{"pathway":"chat","messages":[{"role":"user","content":"hi"}],"targets":[{"provider":"bedrock-main","model":"claude-3-5-sonnet"}]}`
 	resp := post(t, ts.URL+chat.Route, harness.CallerKey, body)
 	defer resp.Body.Close()

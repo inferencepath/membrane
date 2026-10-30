@@ -1,7 +1,6 @@
-// Package config loads the Membrane configuration. It is parse-only:
-// it validates structure and references but never contacts Providers or secrets
-// backends. Secrets are represented only by reference; inline secrets are
-// rejected.
+// Package config parses and validates Membrane configuration. It never
+// contacts Providers or secret backends. Secrets appear only as references;
+// inline secrets are rejected.
 package config
 
 import (
@@ -18,66 +17,54 @@ import (
 const (
 	defaultAddress         = ":8080"
 	defaultShutdownTimeout = 30 * time.Second
-	// defaultConsoleAddress binds the Membrane Console to loopback by default, so
-	// it is reachable from the host without extra credentials but not exposed to
-	// the network unless the operator explicitly rebinds it (and sets a token).
-	defaultConsoleAddress = "127.0.0.1:7474"
+	// defaultConsoleAddress binds the Console to loopback, so it is not exposed
+	// to the network unless the operator rebinds it and sets a token.
+	defaultConsoleAddress = "127.0.0.1:8300"
 )
 
 // secretRefRe requires every secret reference to use a known scheme, so inline
 // secret values cannot be configured.
 var secretRefRe = regexp.MustCompile(`^(env|file|vault):.+`)
 
-// Config is the parsed Membrane configuration. Membrane runs in a single,
-// managed operating model: the daemon owns its runtime config as data in an
-// embedded state store under DataDir. This top-level file carries only bootstrap
-// settings (server, console, audit, data_dir) — all operational config
-// (pathways, credentials, callers, permeability) lives in the store and is
-// edited via the Console or a declarative bundle.
+// Config is the bootstrap configuration: server, Console, audit and data
+// directory settings. Pathways, credentials, callers and Permeability live in
+// the embedded store under DataDir and are edited through the Console or a
+// bundle.
 type Config struct {
 	Server ServerConfig
-	// DataDir is the directory for the daemon's managed control-plane state (the
-	// embedded SQLite store). Required: it is the single source of truth for
-	// runtime config.
+	// DataDir holds the embedded SQLite store. It is required.
 	DataDir string
-	// Audit configures the Interior-only usage audit sink.
+	// Audit configures the Interior usage audit sink.
 	Audit AuditConfig
-	// Console configures the Membrane Console operator UI (separate admin
-	// listener, off the egress path). Disabled by default.
+	// Console configures the Console, which runs on its own admin listener.
 	Console ConsoleConfig
-	// Secrets configures the sealed secret store (the master key that unseals
-	// provider credentials stored via the Console as `secret:<name>` references).
+	// Secrets configures the master key for the sealed secret store.
 	Secrets SecretsConfig
 }
 
-// SecretsConfig configures the sealed secret store. The master key is referenced
-// (env:/file:/vault:), never inline, and lives OUTSIDE the embedded database so a
-// stolen db file alone cannot reveal any sealed secret. When MasterKeyRef is
-// empty, the sealed store is disabled and any `secret:<name>` credential
-// reference fails closed (the egress path stays not-ready until configured).
+// SecretsConfig configures the sealed secret store. The master key is given as
+// a reference and kept outside the database. If MasterKeyRef is empty the
+// sealed store is disabled and any secret:<name> reference fails closed.
 type SecretsConfig struct {
-	// MasterKeyRef references the master key material used to derive the AEAD key
-	// for sealing/unsealing stored secrets. Reference-only (env:/file:/vault:).
+	// MasterKeyRef references the master key material (env:, file: or vault:).
 	MasterKeyRef string
 }
 
-// ConsoleConfig configures the Membrane Console: a built-in operator UI served on
-// a separate admin listener, never on the data-plane (egress) mux. The console is
-// disabled by default; when enabled it binds loopback unless the operator rebinds
-// Address, in which case AuthTokenRef (reference-only) gates non-local access.
+// ConsoleConfig configures the Console. It is served on a separate admin
+// listener, never on the egress mux, and is disabled by default. Unless an
+// AuthTokenRef is set, only local requests are accepted.
 type ConsoleConfig struct {
-	// Enabled turns the admin listener on. When false, no console listener is
-	// opened and the data plane behaves exactly as without the console.
+	// Enabled turns the admin listener on.
 	Enabled bool
-	// Address is the admin listener bind address (default 127.0.0.1:7474).
+	// Address is the admin listener bind address (default 127.0.0.1:8300).
 	Address string
-	// AuthTokenRef references the admin token (env:/file:/vault:), never inline.
-	// Empty means localhost-only access (non-local requests are refused).
+	// AuthTokenRef references the admin token (env:, file: or vault:). If
+	// empty, non-local requests are refused.
 	AuthTokenRef string
 }
 
-// AuditConfig selects the Interior-only usage audit sink. The zero value
-// (Sink == "" or "discard") disables auditing (records are discarded).
+// AuditConfig selects the Interior usage audit sink. An empty Sink or
+// "discard" disables auditing.
 type AuditConfig struct {
 	// Sink is "discard" (default) or "jsonlines".
 	Sink string
@@ -120,7 +107,7 @@ type serverYAML struct {
 	ShutdownTimeout string `yaml:"shutdown_timeout"`
 }
 
-// Load reads and validates the Membrane config at path. Parse-only.
+// Load reads and validates the Membrane config at path.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -139,8 +126,6 @@ func Parse(data []byte) (Config, error) {
 		return Config{}, fmt.Errorf("config: parse: %w", err)
 	}
 
-	// Managed mode is the only operating model: the daemon owns its runtime config
-	// as data in the embedded store under data_dir, which is therefore required.
 	if fc.DataDir == "" {
 		return Config{}, errors.New("config: data_dir is required (the managed state store directory)")
 	}

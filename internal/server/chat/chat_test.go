@@ -176,7 +176,7 @@ func TestChatStreaming(t *testing.T) {
 	}
 }
 
-// --- Error mapping via a fake transporter ---------------------------------
+// Error mapping via a fake transporter.
 
 type errTransport struct{ err error }
 
@@ -236,8 +236,8 @@ func TestChatErrorMapping(t *testing.T) {
 	}
 }
 
-// TestChatErrorNonDisclosure proves the responsible Provider family is withheld
-// from error responses unless the Caller sets Reveal.
+// TestChatErrorNonDisclosure checks that errors name the Provider family only
+// under Reveal.
 func TestChatErrorNonDisclosure(t *testing.T) {
 	stamped := providers.UpstreamStatusError{Status: 500, Provider: "anthropic"}
 
@@ -265,7 +265,7 @@ func TestChatErrorNonDisclosure(t *testing.T) {
 			if got != tc.wantFamily {
 				t.Fatalf("family disclosed = %v, want %v; body=%s", got, tc.wantFamily, raw)
 			}
-			// Endpoint/region/deployment-style detail must NEVER appear.
+			// Endpoint, region and deployment detail never appear.
 			for _, forbidden := range []string{"http://", "https://", "us-east", "deployment", "api-key", "x-api-key"} {
 				if strings.Contains(strings.ToLower(string(raw)), forbidden) {
 					t.Fatalf("error body leaked egress detail %q: %s", forbidden, raw)
@@ -288,7 +288,7 @@ func TestChatLogsAreCleanOfSecretsAndIdentity(t *testing.T) {
 	ts := httptest.NewServer(h)
 	defer ts.Close()
 
-	// Include identity-laden fields in the body (dropped by the Scrub).
+	// Identity fields in the body that the Scrub must drop.
 	resp := post(t, ts.URL+chat.Route, harness.CallerKey,
 		`{"pathway":"chat","messages":[{"role":"user","content":"hi"}]}`)
 	resp.Body.Close()

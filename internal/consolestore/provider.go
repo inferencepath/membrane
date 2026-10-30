@@ -11,11 +11,9 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// ProviderAdapter implements console.ProviderManager: the consolidated provider
-// surface that pairs a sealed secret value with the provider definition (family +
-// connection facts + the `secret:<name>` reference that routing resolves). It is
-// a thin app-layer bridge over secrets.Manager (seal) and the store (atomic
-// persist). Values are write-only — no method returns a plaintext value.
+// ProviderAdapter implements console.ProviderManager, which manages a provider
+// definition together with its sealed secret. Values are write-only: no
+// method returns plaintext.
 type ProviderAdapter struct {
 	st  *store.Store
 	mgr *secrets.Manager
@@ -23,16 +21,15 @@ type ProviderAdapter struct {
 
 var _ console.ProviderManager = (*ProviderAdapter)(nil)
 
-// NewProviderAdapter returns a ProviderAdapter over the store and sealed-secret
-// Manager. It is wired into the Console only when the sealed store is enabled (a
-// master key is configured); otherwise the Console's Providers port stays nil and
-// the endpoints report 503.
+// NewProviderAdapter returns a ProviderAdapter over st and mgr. It is only
+// wired in when a master key is configured; otherwise the Console provider
+// endpoints return 503.
 func NewProviderAdapter(st *store.Store, mgr *secrets.Manager) *ProviderAdapter {
 	return &ProviderAdapter{st: st, mgr: mgr}
 }
 
-// List returns the configured providers, each annotated with whether its sealed
-// key is present and which pathways use it. Never a sealed value.
+// List returns the configured providers, with whether each has its sealed key
+// and which pathways use it.
 func (a *ProviderAdapter) List() (console.ProvidersView, error) {
 	provs, err := a.st.ReadProviders()
 	if err != nil {
@@ -57,8 +54,7 @@ func (a *ProviderAdapter) List() (console.ProvidersView, error) {
 		if authMode == "" {
 			authMode = config.AuthAPIKey
 		}
-		// Ambient-auth providers hold no sealed key; report them as satisfied so
-		// the Console does not flag a "missing key".
+		// Ambient auth needs no sealed key, so do not report one as missing.
 		isSealed := sealed[name]
 		if !config.AuthModeUsesSecret(authMode) {
 			isSealed = true
@@ -84,10 +80,8 @@ func (a *ProviderAdapter) List() (console.ProvidersView, error) {
 	return out, nil
 }
 
-// Set seals the provider's credential value and upserts its definition (with a
-// `secret:<name>` reference) in one store transaction, so routing never sees a
-// half-written provider. The candidate is validated with the daemon's own
-// providers parser before any write.
+// Set validates the provider, seals its secret if the auth mode uses one, and
+// writes both in one transaction.
 func (a *ProviderAdapter) Set(in console.ProviderInput) error {
 	authMode := in.AuthMode
 	if authMode == "" {
@@ -107,8 +101,8 @@ func (a *ProviderAdapter) Set(in console.ProviderInput) error {
 		Models:       in.Models,
 		DefaultModel: in.DefaultModel,
 	}
-	// Secret-backed auth modes (api_key, bedrock bearer token) reference a sealed
-	// value; ambient IAM/managed-identity modes carry no stored secret.
+	// Secret-backed modes (api_key, Bedrock bearer token) reference a sealed
+	// value; ambient IAM and managed identity modes do not.
 	if config.AuthModeUsesSecret(authMode) {
 		row.SecretRef = secrets.RefScheme + ":" + in.Name
 	}
@@ -125,9 +119,7 @@ func (a *ProviderAdapter) Set(in console.ProviderInput) error {
 	return a.st.UpsertProvider(store.ProviderUpsert{Secret: sealed, Provider: row})
 }
 
-// validateProvider runs the candidate provider row through the daemon's own
-// providers parser (via a canonical render) so an invalid definition is rejected
-// before any write.
+// validateProvider renders row and checks it with config.ParseProviders.
 func validateProvider(row store.ProviderRow) error {
 	raw, err := store.RenderProvidersDoc([]store.ProviderRow{row})
 	if err != nil {
@@ -137,8 +129,8 @@ func validateProvider(row store.ProviderRow) error {
 	return err
 }
 
-// Delete removes a provider (definition + sealed secret), refusing while a
-// pathway target still references it so routing never dangles.
+// Delete removes a provider and its sealed secret. It refuses while any
+// pathway still uses the provider.
 func (a *ProviderAdapter) Delete(name string) (bool, error) {
 	usedBy, err := a.usedByPathways()
 	if err != nil {
@@ -150,8 +142,8 @@ func (a *ProviderAdapter) Delete(name string) (bool, error) {
 	return a.st.DeleteProvider(name)
 }
 
-// usedByPathways maps a provider name to the sorted, de-duplicated list of
-// pathways whose targets reference it.
+// usedByPathways maps each provider name to the sorted names of the pathways
+// that use it.
 func (a *ProviderAdapter) usedByPathways() (map[string][]string, error) {
 	paths, err := a.st.ReadPathways()
 	if err != nil {

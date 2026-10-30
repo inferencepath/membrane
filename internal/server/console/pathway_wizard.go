@@ -5,10 +5,8 @@ import (
 	"net/http"
 )
 
-// handlePathwayCreate atomically creates (or updates) a pathway together with its
-// permeability policy in one transaction, so a new pathway is never left in an
-// invalid intermediate state (pathway without policy, or policy without pathway).
-// The response is secret-free.
+// handlePathwayCreate creates or updates a pathway and its permeability policy
+// in one transaction, so neither exists without the other.
 func (c *Console) handlePathwayCreate(w http.ResponseWriter, r *http.Request) {
 	if c.cfg.PathwayCreator == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{

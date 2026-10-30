@@ -1,31 +1,27 @@
 package types
 
-// This file defines the logical, provider-agnostic `image_generation` API DTOs
-// and the canonical inward representation. As with the other operations these
-// are Interior-only shapes: the Caller Key is carried in the request transport
-// (Authorization header), never in the body, and the Reveal flag is an
-// Interior-only control field that never crosses the Membrane.
-
-// ImageRequest is the inbound logical image generation request.
+// ImageRequest is the inbound image generation request.
 type ImageRequest struct {
 	Pathway string `json:"pathway"`
 	Prompt  string `json:"prompt"`
 	// N optionally requests multiple images.
 	N *int `json:"n,omitempty"`
-	// Size, Quality, Style are provider/model-permitting generation controls.
+	// Size, Quality, and Style are generation controls, used where the model
+	// supports them.
 	Size    string `json:"size,omitempty"`
 	Quality string `json:"quality,omitempty"`
 	Style   string `json:"style,omitempty"`
 	// ResponseFormat is "url" (default) or "b64_json".
 	ResponseFormat string `json:"response_format,omitempty"`
-	// Reveal is the Interior-only opt-in to receive provider/model.
+	// Reveal asks for the provider and model in the response. It does not
+	// cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
-// Image is one generated image, carried as a URL or opaque base64 payload.
+// Image is one generated image, as a URL or an opaque base64 payload.
 type Image struct {
 	URL     string `json:"url,omitempty"`
 	B64JSON string `json:"b64_json,omitempty"`
@@ -36,9 +32,9 @@ type ImageUsage struct {
 	Images int `json:"images"`
 }
 
-// CanonicalImage is the provider-agnostic image result assembled on the inward
-// path. Provider and Model are surfaced only when the Reveal flag was set (gated
-// by the inbound Permeability on_reveal set).
+// CanonicalImage is the image result assembled on the inward path. Provider and
+// Model reach the Caller only on Reveal, gated by the inbound Permeability
+// on_reveal set.
 type CanonicalImage struct {
 	PathwayID PathwayID
 	Data      []Image
@@ -47,8 +43,8 @@ type CanonicalImage struct {
 	Model     string
 }
 
-// ImageResponse is the Caller-facing, provider-neutral image response. Provider
-// and Model are populated only when the Caller set the Reveal flag.
+// ImageResponse is the image response returned to the Caller. Provider and
+// Model are set only when the Caller requested Reveal.
 type ImageResponse struct {
 	Pathway  string     `json:"pathway"`
 	Data     []Image    `json:"data"`

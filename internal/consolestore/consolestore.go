@@ -1,15 +1,11 @@
-// Package consolestore adapts the embedded state store into the Membrane
-// Console's ports: the read-only ConfigSource views and the structured/raw
-// ConfigEditor. It is an app-layer adapter (like consoleview/consoleedit): it
-// may import config, Interior, Membrane, and store packages to read/validate the
-// managed configuration, then maps them to the console's secret-free types. The
-// console itself imports none of those — it depends only on the injected ports —
-// so the console's isolation from the egress path holds.
+// Package consolestore implements the Membrane Console ports (ConfigSource,
+// ConfigEditor and related interfaces) on top of the embedded store. It may
+// import the config, Membrane and store packages; the Console itself depends
+// only on the ports, which keeps it isolated from the egress path.
 //
-// The store is the single source of truth. Reads project rows into views; edits
-// validate with the daemon's own parsers, write rows transactionally, then
-// trigger the fail-closed, last-good reload. Secrets stay by reference: the
-// store holds references and hashes only, never a secret value.
+// Reads turn store rows into views. Edits are validated with the daemon
+// parsers, written in a transaction, and followed by a fail closed, last-good
+// reload. The store holds secret references and hashes, never secret values.
 package consolestore
 
 import (
@@ -24,22 +20,20 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// ReloadOutcome mirrors the daemon's reload result without importing app, so the
-// adapter stays decoupled from the composition root.
+// ReloadOutcome mirrors the daemon reload result so this package need not
+// import app.
 type ReloadOutcome struct {
 	Applied   bool
 	Unchanged bool
 	Reason    string
 }
 
-// Reload triggers the daemon's atomic, fail-closed reload and reports the result.
+// Reload runs the daemon's fail closed reload and reports the result.
 type Reload func() ReloadOutcome
 
-// SpecValidator is the cross-kind dry-run validator (app.ValidateSpecs), injected
-// so the adapter validates a candidate bundle identically to the serving path
-// without importing the composition root. It receives the four canonical
-// documents and returns the first secret-free error, or nil when the whole
-// configuration would load.
+// SpecValidator dry-runs a full configuration across kinds, as
+// app.ValidateSpecs does for the serving path. It returns nil if the documents
+// would load, or else the first error, which carries no secret material.
 type SpecValidator func(permBytes, callerBytes, credBytes, provBytes, capsBytes []byte) error
 
 // Adapter implements console.ConfigSource, console.ConfigEditor, and
@@ -62,15 +56,14 @@ var (
 // Option configures an Adapter.
 type Option func(*Adapter)
 
-// WithValidator injects the cross-kind validator used by the declarative
-// bundle-apply path. When unset, bundle apply/diff falls back to the per-kind
-// parsers only (no cross-kind credential/adapter checks).
+// WithValidator sets the cross-kind validator used by bundle apply and diff.
+// Without it, only the per-kind parsers run.
 func WithValidator(v SpecValidator) Option {
 	return func(a *Adapter) { a.validate = v }
 }
 
-// New returns an Adapter over the store. cfg supplies the bootstrap server/audit/
-// console settings for the Settings view; reload triggers the managed reload.
+// New returns an Adapter over st. cfg supplies the bootstrap settings shown in
+// the Settings view, and reload is called after each successful write.
 func New(st *store.Store, cfg config.Config, reload Reload, opts ...Option) *Adapter {
 	a := &Adapter{st: st, cfg: cfg, reload: reload}
 	for _, opt := range opts {
@@ -79,10 +72,9 @@ func New(st *store.Store, cfg config.Config, reload Reload, opts ...Option) *Ada
 	return a
 }
 
-// --- ConfigSource (read views) -------------------------------------------
+// ConfigSource read views.
 
-// Server returns the server/audit/console settings view, annotated with the
-// managed mode so the console can show operators how the daemon is configured.
+// Server returns the server, audit and Console settings view.
 func (a *Adapter) Server() console.ServerView {
 	return console.ServerView{
 		Address:         a.cfg.Server.Address,
@@ -121,8 +113,7 @@ func (a *Adapter) Pathways() (console.PathwaysView, error) {
 	return view, nil
 }
 
-// Credentials returns named credential references plus a resolve indicator,
-// never a value.
+// Credentials returns credential references and whether each one resolves.
 func (a *Adapter) Credentials() (console.CredentialsView, error) {
 	rows, err := a.st.ReadCredentials()
 	if err != nil {
@@ -141,7 +132,7 @@ func (a *Adapter) Credentials() (console.CredentialsView, error) {
 	return view, nil
 }
 
-// Callers returns Caller public ids + allowlists (never a secret or hash).
+// Callers returns Caller public IDs and allowlists, without hashes.
 func (a *Adapter) Callers() (console.CallersView, error) {
 	rows, err := a.st.ReadCallers()
 	if err != nil {
@@ -180,11 +171,9 @@ func (a *Adapter) Permeability() (console.PermeabilityView, error) {
 	return view, nil
 }
 
-// Operations returns the console's operations catalog: the closed operation enum
-// (stable tier order) with each operation's canonical egress route and its
-// per-operation Permeability field palette. `chat` is reported unrestricted (no
-// closed vocabulary); every other operation carries its sorted outbound/inbound
-// field sets from the single source of truth, permeability.Vocabulary.
+// Operations returns every operation with its egress route and Permeability
+// fields. Chat has no fixed field vocabulary and is reported unrestricted;
+// other operations list their fields from permeability.Vocabulary.
 func (a *Adapter) Operations() console.OperationsView {
 	var view console.OperationsView
 	for _, op := range types.AllOperations() {
@@ -220,9 +209,8 @@ func schemeOf(ref string) string {
 	return scheme
 }
 
-// refResolves reports whether a secret reference currently resolves, WITHOUT
-// surfacing its value. env:/file: are checked directly; vault: is not
-// dereferenced in this read-only view.
+// refResolves reports whether an env: or file: reference currently has a
+// value. Other schemes, including vault:, are not dereferenced here.
 func refResolves(ref string) bool {
 	scheme, rest, ok := strings.Cut(ref, ":")
 	if !ok {

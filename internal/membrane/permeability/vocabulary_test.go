@@ -15,8 +15,7 @@ func ds(outbound, def, reveal []string) DirectionSets {
 }
 
 func TestValidateVocabularyChatUnrestricted(t *testing.T) {
-	// chat is unrestricted (backward compatibility): a field outside any fixed
-	// list is still accepted, since the denylist is enforced at Parse.
+	// chat accepts any field; the denylist is enforced by Parse.
 	err := ValidateVocabulary("chat", types.OperationChat,
 		ds([]string{"messages", "seed", "response_format", "frequency_penalty"},
 			[]string{"message", "usage"}, []string{"provider"}))
@@ -78,7 +77,7 @@ func TestVocabularyDisplay(t *testing.T) {
 			t.Fatalf("outbound vocab not sorted: %v", out)
 		}
 	}
-	// chat is unrestricted → empty display vocabulary.
+	// chat is unrestricted, so it has no display vocabulary.
 	co, ci := Vocabulary(types.OperationChat)
 	if co != nil || ci != nil {
 		t.Fatalf("chat display vocab should be nil (unrestricted), got out=%v in=%v", co, ci)

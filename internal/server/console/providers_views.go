@@ -1,16 +1,15 @@
 package console
 
-// This file defines the Console's Provider port: the operator-facing consolidation
-// of "a provider key" = a sealed secret value PLUS the credential reference that
-// points at it. The Providers screen is the primary setup surface; Credentials and
-// Secrets remain available under Advanced for low-level editing.
+// A provider key is a sealed secret value together with the credential
+// reference that points at it. The Providers screen manages both in one step;
+// Credentials and Secrets stay available under Advanced for low-level editing.
 //
-// Isolation holds: like every console port, values are WRITE-ONLY. No method or
-// view field ever returns a plaintext secret value — only references and status.
+// Values are write-only. No method or view field returns a plaintext secret,
+// only references and status.
 
 // ProviderView is the secret-free projection of one provider: its name, vendor
 // family and connection facts, whether a sealed key is present, the reference
-// form, and the pathways that use it. Never a sealed value.
+// form, and the pathways that use it.
 type ProviderView struct {
 	Name         string   `json:"name"`
 	Family       string   `json:"family"`
@@ -29,11 +28,9 @@ type ProviderView struct {
 	UsedBy       []string `json:"usedBy"`
 }
 
-// ProviderInput is the create/update payload for one provider: its name, family,
-// auth mode (and role for aws_assume_role), connection facts, the admin-controlled
-// allowed models with a default, and — for secret-backed auth modes (api_key and
-// bedrock bearer-token) — the plaintext credential value to seal. The value is
-// write-only and never echoed back; ambient IAM modes require no value.
+// ProviderInput is the create/update payload for one provider. Secret-backed
+// auth modes (api_key and the Bedrock bearer token) carry the plaintext value to
+// seal, which is never echoed back. Ambient IAM modes need no value.
 type ProviderInput struct {
 	Name         string   `json:"name"`
 	Family       string   `json:"family"`
@@ -55,13 +52,12 @@ type ProvidersView struct {
 	Providers []ProviderView `json:"providers"`
 }
 
-// ProviderManager is the console's app-layer port for managing providers. It is
-// implemented in the app layer (consolestore) over the sealed secret store and
-// the credential store; the console package never imports those directly.
+// ProviderManager manages providers over the sealed secret store and the
+// credential store. It is implemented in internal/consolestore.
 //
-// Set atomically seals the value and upserts the provider definition (family +
-// connection facts + the `secret:<name>` reference). Delete removes both,
-// refusing while a pathway target still references it.
+// Set seals the value and upserts the provider definition, including its
+// secret:<name> reference, in one transaction. Delete removes both and refuses
+// while a pathway target still references the provider.
 type ProviderManager interface {
 	List() (ProvidersView, error)
 	Set(in ProviderInput) error

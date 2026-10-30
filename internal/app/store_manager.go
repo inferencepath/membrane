@@ -12,12 +12,10 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// StoreManager owns the active serving Snapshot built from the embedded state
-// store and swaps it atomically on reload. It mirrors Manager's fail-closed,
-// last-good, lock-free-read contract — Current() is a hot-path atomic load;
-// Reload() rebuilds from the store and swaps only a valid candidate in. Unlike
-// the file Manager, a reload is triggered explicitly (after a console edit) or
-// on SIGHUP/interval, not by file-change polling.
+// StoreManager holds the active Snapshot built from the state store. Current is
+// a lock-free atomic load. Reload rebuilds from the store and swaps in only a
+// valid candidate, keeping the last-good Snapshot otherwise. Reloads are
+// triggered after a Console edit, on SIGHUP or on an interval.
 type StoreManager struct {
 	st     *store.Store
 	obs    transporter.Observer
@@ -33,23 +31,21 @@ type StoreManager struct {
 // StoreManagerOption configures a StoreManager.
 type StoreManagerOption func(*StoreManager)
 
-// WithStoreReloadObserver registers a callback invoked with the result of every
-// reload attempt (applied/rejected/unchanged), to drive reload telemetry.
+// WithStoreReloadObserver registers fn to receive the result of every reload
+// attempt, for telemetry.
 func WithStoreReloadObserver(fn func(ReloadResult)) StoreManagerOption {
 	return func(m *StoreManager) { m.onReload = fn }
 }
 
-// WithSecretResolver injects the sealed-store resolver used for `secret:<name>`
-// credential references (secrets.Manager.Resolve). Without it, sealed references
-// fail closed on every build/reload.
+// WithSecretResolver sets the resolver for secret:<name> references. Without
+// it, those references fail closed on every build.
 func WithSecretResolver(r SecretResolver) StoreManagerOption {
 	return func(m *StoreManager) { m.secretResolve = r }
 }
 
-// NewStoreManager builds the initial Snapshot from the store (fail-closed at
-// startup) and returns a Manager over it. If the store does not yet hold a valid
-// minimum configuration, it returns an error and no Manager — the daemon then
-// stays not-ready while the console remains available to complete setup.
+// NewStoreManager builds the initial Snapshot from the store. If the store does
+// not hold a valid configuration yet, it returns an error; the daemon then stays
+// not ready while the Console remains available for setup.
 func NewStoreManager(st *store.Store, obs transporter.Observer, logger *slog.Logger, opts ...StoreManagerOption) (*StoreManager, error) {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(nopWriter{}, nil))
@@ -70,13 +66,11 @@ func NewStoreManager(st *store.Store, obs transporter.Observer, logger *slog.Log
 	return m, nil
 }
 
-// Current returns the active Snapshot (lock-free atomic load, never nil after
-// construction).
+// Current returns the active Snapshot. It is never nil.
 func (m *StoreManager) Current() *chat.Snapshot { return m.ptr.Load() }
 
-// Reload rebuilds the Snapshot from the store and swaps it in atomically. On any
-// failure the last-good Snapshot is retained and a secret-free reason returned —
-// the egress path never drops to an invalid configuration.
+// Reload rebuilds the Snapshot from the store and swaps it in. On failure the
+// last-good Snapshot keeps serving and a secret-free reason is returned.
 func (m *StoreManager) Reload() ReloadResult {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -105,7 +99,8 @@ func (m *StoreManager) report(r ReloadResult) ReloadResult {
 	return r
 }
 
-// Watch reloads on every tick of trigger until ctx is done (mirrors Manager).
+// Watch reloads on every receive from trigger until ctx is done or trigger is
+// closed.
 func (m *StoreManager) Watch(ctx context.Context, trigger <-chan struct{}) {
 	for {
 		select {

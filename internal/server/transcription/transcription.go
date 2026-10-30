@@ -1,9 +1,9 @@
 // Package transcription implements the logical /v1/audio/transcriptions
-// (speech-to-text) handler: Admit → Authorize → Resolve (operation-gated) → Scrub
-// → Transporter (+ Egress Identity) → inward Scrub. The request is
-// multipart/form-data; the handler extracts the audio bytes and allowlisted form
-// fields (dropping the client filename, extra parts, and headers) and enforces an
-// upload size limit before any Provider is contacted.
+// (speech-to-text) handler: Admit, Authorize, Resolve, Scrub, Transporter with
+// Egress Identity, then the inward Scrub. From the multipart request it keeps
+// only the audio bytes and allowlisted form fields, dropping the client
+// filename, extra parts, and part headers, and it enforces an upload size
+// limit before any Provider is contacted.
 package transcription
 
 import (
@@ -28,12 +28,12 @@ import (
 // Route is the path this handler serves.
 const Route = "/v1/audio/transcriptions"
 
-// DefaultMaxUploadBytes bounds the multipart upload size (25 MiB), rejected
-// fail-closed before any Provider contact.
+// DefaultMaxUploadBytes bounds the multipart upload size (25 MiB). Larger
+// uploads are rejected before any Provider is contacted.
 const DefaultMaxUploadBytes int64 = 25 << 20
 
 // partMaxMemory is the in-memory multipart parse budget; larger parts spill to
-// temp files (bounded overall by the MaxBytesReader limit).
+// temp files, still bounded by the MaxBytesReader limit.
 const partMaxMemory = 1 << 20
 
 const (
@@ -63,7 +63,7 @@ type Handler struct {
 	maxBytes int64
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink.
@@ -75,7 +75,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -142,8 +142,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bound the request body before parsing: oversize uploads are rejected
-	// fail-closed (413) before any Provider is contacted.
+	// Oversize uploads fail closed with 413 before any Provider is contacted.
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxBytes)
 	if err := r.ParseMultipartForm(partMaxMemory); err != nil {
 		var mbErr *http.MaxBytesError
@@ -214,9 +213,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	tiers := planTiers(plan)
 
-	// Build the canonical payload: the audio bytes plus the allowlisted form
-	// fields that are present. The Scrub then rebuilds the egress multipart from
-	// the Pathway's outbound allowlist; the client filename never crosses.
+	// The canonical payload holds the audio bytes and any allowlisted form
+	// fields. The Scrub rebuilds the egress multipart from the Pathway's
+	// outbound allowlist, so the client filename never crosses.
 	payload := map[string]any{"file": fileBytes}
 	for _, field := range []string{"language", "prompt", "response_format"} {
 		if v := r.FormValue(field); v != "" {
@@ -292,7 +291,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

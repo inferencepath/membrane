@@ -30,8 +30,8 @@ func (s *recordingSink) all() []audit.Record {
 	return append([]audit.Record(nil), s.records...)
 }
 
-// TestAuditOneRecordPerServedRequest: a successful request writes exactly one
-// Interior-only record with the correct caller/pathway/outcome/tokens.
+// TestAuditOneRecordPerServedRequest checks that a successful request writes
+// one record with the right Caller, Pathway, outcome and token counts.
 func TestAuditOneRecordPerServedRequest(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "hi", Model: "m", FinishReason: "stop", TotalTokens: 9})
@@ -70,8 +70,8 @@ func TestAuditOneRecordPerServedRequest(t *testing.T) {
 	}
 }
 
-// TestAuditRecordsUpstreamFailureOutcome: an upstream error still writes one
-// record with a non-success outcome and no token counts.
+// TestAuditRecordsUpstreamFailureOutcome checks that an upstream error writes
+// one record with a failure outcome and no token counts.
 func TestAuditRecordsUpstreamFailureOutcome(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Status: http.StatusInternalServerError})

@@ -82,7 +82,7 @@ func TestKeyVersionRecorded(t *testing.T) {
 func TestErrorsDoNotLeakValue(t *testing.T) {
 	k, _ := secrets.NewKeeper([]byte("a-sufficiently-long-master-key!!"), 1)
 	ct, nonce, _ := k.Seal([]byte("top-secret-value"))
-	// Wrong nonce size path and auth-failure path must not echo the value.
+	// Neither the bad nonce error nor the auth failure may echo the value.
 	if _, err := k.Open(ct, nonce[:4]); err == nil || strings.Contains(err.Error(), "top-secret") {
 		t.Fatalf("unexpected error (or value leak): %v", err)
 	}

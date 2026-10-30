@@ -22,20 +22,15 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// Canary values that MUST never appear in any console response or log: a
-// resolved credential value, the resolved admin token, and a Caller Key's
-// plaintext secret (only its hash is ever stored on disk).
+// Canary values that must not appear in any console response or log.
 const (
 	canarySecretValue = "sk-LEAK-CANARY-9f3a2b"
 	canaryAdminToken  = "admintok-CANARY-7b2c4d"
 	canaryCallerPlain = "caller-plaintext-CANARY-e5f6"
 )
 
-// TestConsoleNeverLeaksSecrets wires the real app-layer adapter (consolestore)
-// over a managed store that references secrets by scheme, then scans every read
-// response and the logs for the canaries. This is the console's secret-safety
-// gate: credentials are reference-only, Caller secrets exist only as hashes, and
-// the admin token is never echoed.
+// TestConsoleNeverLeaksSecrets scans every read response and the logs of a
+// console backed by a real managed store for the canaries.
 func TestConsoleNeverLeaksSecrets(t *testing.T) {
 	dir := t.TempDir()
 	callerHash := hex.EncodeToString(func() []byte { s := sha256.Sum256([]byte(canaryCallerPlain)); return s[:] }())
@@ -56,8 +51,8 @@ func TestConsoleNeverLeaksSecrets(t *testing.T) {
 	exec(`INSERT INTO providers (name, family, endpoint, models, default_model, secret_ref)
 	      VALUES ('openai-main', 'openai', 'https://api.openai.com/v1', 'gpt-4o-mini', 'gpt-4o-mini', 'env:CONSOLE_LEAK_ENV')`)
 	exec(`INSERT INTO pathway_providers (pathway, provider) VALUES ('chat', 'openai-main')`)
-	// An advanced raw credential referencing the same env canary, so the
-	// Keep one credentials row in store to ensure hidden endpoints never surface it.
+	// A raw credential row referencing the env canary, which no endpoint may
+	// surface.
 	exec(`INSERT INTO credentials (name, secret_ref) VALUES ('legacy', 'env:CONSOLE_LEAK_ENV')`)
 	exec(`INSERT INTO callers (key_id, caller_id, name, secret_hash) VALUES ('ck_demo', 'acme-app', 'Acme Demo App', ?)`, callerHash)
 	exec(`INSERT INTO caller_allow (key_id, pathway) VALUES ('ck_demo', 'chat')`)
@@ -67,15 +62,14 @@ func TestConsoleNeverLeaksSecrets(t *testing.T) {
 	writeFile(t, auditPath, `{"schema_version":1,"timestamp":"2026-10-08T10:00:00Z","caller_id":"acme-app","pathway":"chat","outcome":"success","total_tokens":7}
 `)
 
-	// Secrets resolve to the canaries, so the console *could* leak them if it ever
-	// dereferenced a value.
+	// Secrets resolve to the canaries, so dereferencing one would leak it.
 	t.Setenv("CONSOLE_LEAK_ENV", canarySecretValue)
 
 	cfg := config.Config{
 		Server:  config.ServerConfig{Address: ":8080", ShutdownTimeout: 30 * time.Second},
 		DataDir: dir,
 		Audit:   config.AuditConfig{Sink: "jsonlines", Path: auditPath},
-		Console: config.ConsoleConfig{Enabled: true, Address: "127.0.0.1:7474", AuthTokenRef: "env:CONSOLE_ADMIN_ENV"},
+		Console: config.ConsoleConfig{Enabled: true, Address: "127.0.0.1:8300", AuthTokenRef: "env:CONSOLE_ADMIN_ENV"},
 	}
 
 	var logbuf bytes.Buffer
@@ -153,10 +147,8 @@ func writeFile(t *testing.T, path, body string) {
 	}
 }
 
-// TestConsoleSecretsEndpointsNeverLeakValue wires the LIVE sealed secret store
-// (master key + SecretAdapter), stores a value equal to the canary, then drives
-// the secrets endpoints (set + list) and asserts the plaintext value never
-// appears in any response or in the logs. Values are write-only from the console.
+// TestConsoleSecretsEndpointsNeverLeakValue checks that the secrets endpoints,
+// backed by a real sealed store, never return or log a stored value.
 func TestConsoleSecretsEndpointsNeverLeakValue(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, store.DBFileName))
@@ -207,16 +199,14 @@ func TestConsoleSecretsEndpointsNeverLeakValue(t *testing.T) {
 		t.Fatalf("SECRET LEAK: set response contains the value:\n%s", setRec.Body.String())
 	}
 
-	// Logs (incl. admin-action audit) must not carry the value either.
+	// Logs, including the admin audit, must not carry the value either.
 	if strings.Contains(logbuf.String(), canarySecretValue) {
 		t.Fatalf("SECRET LEAK in logs: canary present")
 	}
 }
 
-// TestConsoleProviderEndpointsNeverLeakKey wires the LIVE provider port (sealed
-// store + ProviderAdapter) and drives the provider endpoints with a key equal to
-// the canary, asserting the key never appears in any response or log. The atomic
-// Set seals the key and writes the secret:<name> credential together.
+// TestConsoleProviderEndpointsNeverLeakKey checks that the provider endpoints,
+// backed by a real sealed store, never return or log a provider key.
 func TestConsoleProviderEndpointsNeverLeakKey(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, store.DBFileName))
@@ -241,7 +231,7 @@ func TestConsoleProviderEndpointsNeverLeakKey(t *testing.T) {
 		Logger:    logger,
 	}).Handler()
 
-	// Create the provider with the canary key (atomic seal + credential).
+	// Create the provider with the canary key.
 	setReq := httptest.NewRequest(http.MethodPost, "/api/console/providers",
 		strings.NewReader(`{"name":"openai-main","family":"openai","models":["gpt-4o"],"defaultModel":"gpt-4o","endpoint":"https://api.openai.com/v1","value":"`+canarySecretValue+`"}`))
 	setReq.RemoteAddr = "127.0.0.1:1"
@@ -254,7 +244,7 @@ func TestConsoleProviderEndpointsNeverLeakKey(t *testing.T) {
 		t.Fatalf("KEY LEAK: provider set response contains the key:\n%s", setRec.Body.String())
 	}
 
-	// List: references + status only, never the key.
+	// List: references and status only, never the key.
 	listBody := get(t, h, "/api/console/providers", "127.0.0.1:1", nil).Body.String()
 	if !strings.Contains(listBody, "openai-main") || !strings.Contains(listBody, "secret:openai-main") {
 		t.Fatalf("provider list missing expected references: %s", listBody)
@@ -263,8 +253,7 @@ func TestConsoleProviderEndpointsNeverLeakKey(t *testing.T) {
 		t.Fatalf("KEY LEAK: provider list response contains the key:\n%s", listBody)
 	}
 
-	// The sealed key must round-trip through the store (proving it was persisted),
-	// but only via the keeper — never any console surface.
+	// The key is persisted and readable through the store, not the console.
 	if got, _ := mgr.Get("openai-main"); got != canarySecretValue {
 		t.Fatalf("sealed key did not persist via provider set")
 	}

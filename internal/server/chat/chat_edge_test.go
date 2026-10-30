@@ -25,9 +25,7 @@ import (
 	"github.com/inferencepath/membrane/test/harness"
 )
 
-// TestReloadableNilSnapshotFailsClosed verifies the reloadable handler serves
-// 503 (never panics) when the active Snapshot is nil — e.g. a freshly
-// bootstrapped managed store that is not yet configured.
+// TestReloadableNilSnapshotFailsClosed checks that a nil Snapshot yields 503.
 func TestReloadableNilSnapshotFailsClosed(t *testing.T) {
 	h := chat.NewReloadable(func() *chat.Snapshot { return nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)), metrics.Nop{})
@@ -48,8 +46,7 @@ func TestReloadableNilSnapshotFailsClosed(t *testing.T) {
 	}
 }
 
-// TestChatOptionalParams exercises the optional sampling parameters so they
-// cross (allowlisted) into the upstream request body.
+// TestChatOptionalParams checks that sampling parameters reach the upstream body.
 func TestChatOptionalParams(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
@@ -88,9 +85,8 @@ func TestChatBearerEmptyToken(t *testing.T) {
 	}
 }
 
-// TestChatDanglingToolResult covers a tool-result turn whose
-// tool_call_id has no prior assistant tool_call is rejected with a local 400
-// before any Membrane crossing (the transport must never be invoked).
+// TestChatDanglingToolResult checks that a tool result with no prior tool_call
+// is rejected with 400 without calling the transport.
 func TestChatDanglingToolResult(t *testing.T) {
 	ts := httptest.NewServer(handlerWith(t, errTransport{err: errors.New("transport must not be called")}))
 	defer ts.Close()
@@ -104,8 +100,7 @@ func TestChatDanglingToolResult(t *testing.T) {
 	}
 }
 
-// TestChatToolResultWithPriorCallOK confirms a well-formed tool loop (result
-// referencing a prior assistant tool_call) passes the integrity guard.
+// TestChatToolResultWithPriorCallOK checks that a well-formed tool loop is accepted.
 func TestChatToolResultWithPriorCallOK(t *testing.T) {
 	ts := httptest.NewServer(handlerWith(t, successTransport{}))
 	defer ts.Close()
@@ -120,9 +115,8 @@ func TestChatToolResultWithPriorCallOK(t *testing.T) {
 	}
 }
 
-// toolPolicySpec is a chat Permeability spec with tools allowlisted plus a
-// tool_policy: a named-tool allowlist, caps, a redaction pattern, and a
-// destination restriction to the bound provider ("openai").
+// toolPolicySpec allows tools on the chat Pathway, with a tool_policy limited
+// to the "openai" destination.
 const toolPolicySpec = `version: 1
 pathways:
   chat:
@@ -149,8 +143,8 @@ func toolPolicyHandler(t *testing.T, fakeURL string) http.Handler {
 	return h
 }
 
-// TestToolPolicyDeniesNonAllowlistedTool: a tool outside tools_allow is rejected
-// on the Interior with a generic 400 before any Membrane crossing.
+// TestToolPolicyDeniesNonAllowlistedTool checks that a tool outside tools_allow
+// is rejected before crossing the Membrane.
 func TestToolPolicyDeniesNonAllowlistedTool(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
@@ -169,8 +163,7 @@ func TestToolPolicyDeniesNonAllowlistedTool(t *testing.T) {
 	}
 }
 
-// TestToolPolicyDeniedTool: a tool on tools_deny is rejected even if Allow would
-// otherwise be empty/permissive.
+// TestToolPolicyDeniedTool checks that a tool on tools_deny is rejected.
 func TestToolPolicyDeniedTool(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
@@ -186,8 +179,7 @@ func TestToolPolicyDeniedTool(t *testing.T) {
 	}
 }
 
-// TestToolPolicyCaps: exceeding max_tools or max_tool_result_bytes is rejected
-// pre-egress.
+// TestToolPolicyCaps checks that max_tools and max_tool_result_bytes are enforced.
 func TestToolPolicyCaps(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
@@ -195,7 +187,7 @@ func TestToolPolicyCaps(t *testing.T) {
 	ts := httptest.NewServer(toolPolicyHandler(t, fake.URL()))
 	defer ts.Close()
 
-	// max_tools=2 exceeded by three (allowlisted) tools.
+	// Three allowed tools against max_tools: 2.
 	tooMany := `{"pathway":"chat","tools":[{"name":"get_weather"},{"name":"get_weather"},{"name":"get_weather"}],"messages":[{"role":"user","content":"hi"}]}`
 	resp := post(t, ts.URL+chat.Route, harness.CallerKey, tooMany)
 	resp.Body.Close()
@@ -203,7 +195,7 @@ func TestToolPolicyCaps(t *testing.T) {
 		t.Fatalf("max_tools: status = %d, want 400", resp.StatusCode)
 	}
 
-	// max_tool_result_bytes=16 exceeded by an oversized tool-role result.
+	// A tool result longer than max_tool_result_bytes: 16.
 	big := `{"pathway":"chat","messages":[` +
 		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","name":"get_weather","arguments":{}}]},` +
 		`{"role":"tool","tool_call_id":"c1","content":"this result is definitely longer than sixteen bytes"}]}`
@@ -214,9 +206,8 @@ func TestToolPolicyCaps(t *testing.T) {
 	}
 }
 
-// TestToolPolicyDestinationScope: a tool request whose destination is not in the
-// tool_policy.destinations set is rejected pre-egress. Here the bound provider is
-// "openai" but the policy only enables "internal-llm".
+// TestToolPolicyDestinationScope checks that tools are rejected when the bound
+// provider ("openai") is not in tool_policy.destinations.
 func TestToolPolicyDestinationScope(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
@@ -240,13 +231,13 @@ func TestToolPolicyDestinationScope(t *testing.T) {
 	}
 }
 
-// TestToolPolicyRedactsResultBeforeEgress: configured redaction patterns are
-// applied to tool-role result content before it crosses the Membrane.
+// TestToolPolicyRedactsResultBeforeEgress checks that redact patterns apply to
+// tool results before they cross the Membrane.
 func TestToolPolicyRedactsResultBeforeEgress(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "ok", FinishReason: "stop"})
 	defer fake.Close()
-	// Loosen the byte cap so the (short) result passes caps but still redacts.
+	// Raise the byte cap so the result is redacted rather than rejected.
 	spec := strings.Replace(toolPolicySpec, "max_tool_result_bytes: 16", "max_tool_result_bytes: 4096", 1)
 	h, err := harness.BuildChatPermeability(fake.URL(), nil, spec, nil)
 	if err != nil {
@@ -274,8 +265,8 @@ type capSink struct{ records []audit.Record }
 
 func (c *capSink) Write(r audit.Record) { c.records = append(c.records, r) }
 
-// TestToolPolicyAuditCountsOnly: a tool round-trip records content-free usage
-// counts and no tool names, arguments, or results.
+// TestToolPolicyAuditCountsOnly checks that the audit record holds tool counts
+// but no tool names, arguments or results.
 func TestToolPolicyAuditCountsOnly(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{
@@ -308,7 +299,6 @@ func TestToolPolicyAuditCountsOnly(t *testing.T) {
 	if rec.ToolsOffered != 1 || rec.ToolTurnsSent != 1 || rec.ToolCallsReturned != 1 {
 		t.Fatalf("counts = offered:%d turns:%d returned:%d", rec.ToolsOffered, rec.ToolTurnsSent, rec.ToolCallsReturned)
 	}
-	// The serialized record must carry counts only — never tool names/args/results.
 	b, _ := json.Marshal(rec)
 	for _, forbidden := range []string{"get_weather", "city", "NYC", "weather?"} {
 		if strings.Contains(string(b), forbidden) {
@@ -317,7 +307,7 @@ func TestToolPolicyAuditCountsOnly(t *testing.T) {
 	}
 }
 
-// noFlushWriter is an http.ResponseWriter that does NOT implement http.Flusher.
+// noFlushWriter is an http.ResponseWriter without http.Flusher.
 type noFlushWriter struct {
 	header http.Header
 	code   int
@@ -332,8 +322,7 @@ func (w *noFlushWriter) Header() http.Header {
 func (w *noFlushWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (w *noFlushWriter) WriteHeader(code int)        { w.code = code }
 
-// TestChatStreamUnsupported covers the branch where the ResponseWriter cannot
-// flush: streaming must fail with 500 rather than buffer silently.
+// TestChatStreamUnsupported checks that streaming without a Flusher returns 500.
 func TestChatStreamUnsupported(t *testing.T) {
 	h := handlerWith(t, errTransport{err: errors.New("unused")})
 	req, _ := http.NewRequest(http.MethodPost, chat.Route, strings.NewReader(`{"pathway":"chat","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
@@ -345,8 +334,7 @@ func TestChatStreamUnsupported(t *testing.T) {
 	}
 }
 
-// midErrTransport emits one chunk and then fails, exercising the mid-stream
-// terminal-error branch (bytes already relayed).
+// midErrTransport emits one chunk and then fails.
 type midErrTransport struct{}
 
 func (midErrTransport) Transport(context.Context, scrub.SanitizedRequest) (types.CanonicalResponse, error) {
@@ -358,8 +346,7 @@ func (midErrTransport) TransportStream(_ context.Context, _ scrub.SanitizedReque
 	return errors.New("upstream dropped mid-stream")
 }
 
-// successTransport returns a fixed response carrying usage, to exercise the
-// metrics success path (including token counts).
+// successTransport returns a fixed response with token usage.
 type successTransport struct{}
 
 func (successTransport) Transport(context.Context, scrub.SanitizedRequest) (types.CanonicalResponse, error) {

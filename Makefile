@@ -1,4 +1,4 @@
-# Membrane — developer tasks.
+# Membrane developer tasks.
 #
 # Quality is non-negotiable: `make check` runs the full local gate that CI also
 # enforces (build, vet, format check, lint, race tests, coverage thresholds,
@@ -121,12 +121,12 @@ image: ## Build the container image ($(IMAGE)).
 .PHONY: compose
 compose: ## Start the single-service stack via docker compose (builds on first run).
 	docker compose up -d --build
-	@echo "Membrane up: egress http://127.0.0.1:8080/v1/chat · console http://127.0.0.1:7474"
+	@echo "Membrane up: egress http://127.0.0.1:8080/v1/chat · console http://127.0.0.1:8300"
 
 .PHONY: sign
 sign: ## Sign the image + SBOM with cosign IF COSIGN_KEY is set (never fabricated).
 	@if [ -z "$(COSIGN_KEY)" ]; then \
-		echo "sign: COSIGN_KEY is unset — skipping (signing is operator-provided; no signature is fabricated)."; \
+		echo "sign: COSIGN_KEY is unset, skipping (signing is operator-provided; no signature is fabricated)."; \
 		exit 0; \
 	fi
 	cosign sign --key "$(COSIGN_KEY)" --yes $(IMAGE)

@@ -12,22 +12,18 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// BuildSnapshotFromStore assembles the serving Snapshot from the embedded state
-// store. It renders the stored rows into the canonical config documents (via the
-// store's own renderers) and runs them through the daemon's own parsers, so the
-// store-backed path enforces the identical validation (and fail-closed
-// semantics) as the file-backed path — there is no second, weaker validator.
-// Secrets remain by reference throughout.
-//
-// This is the no-sealed-store variant: `secret:` credential references fail
-// closed. Use BuildSnapshotFromStoreWithSecrets to enable the sealed store.
+// BuildSnapshotFromStore assembles the serving Snapshot from the state store.
+// The stored rows are rendered to the canonical config documents and run
+// through the regular parsers, so validation matches every other path. Secrets
+// stay as references, and secret: references fail closed; use
+// BuildSnapshotFromStoreWithSecrets to resolve them.
 func BuildSnapshotFromStore(st *store.Store, obs transporter.Observer) (*chat.Snapshot, *keyring.Keyring, error) {
 	return BuildSnapshotFromStoreWithSecrets(st, obs, nil)
 }
 
-// BuildSnapshotFromStoreWithSecrets is BuildSnapshotFromStore with a sealed-store
-// resolver for `secret:<name>` credential references (secrets.Manager.Resolve).
-// A nil resolver reproduces BuildSnapshotFromStore (sealed references fail closed).
+// BuildSnapshotFromStoreWithSecrets is BuildSnapshotFromStore with a resolver
+// for secret:<name> references. A nil resolver behaves like
+// BuildSnapshotFromStore.
 func BuildSnapshotFromStoreWithSecrets(st *store.Store, obs transporter.Observer, secretResolve SecretResolver) (*chat.Snapshot, *keyring.Keyring, error) {
 	permBytes, err := st.RenderPermeability()
 	if err != nil {
@@ -77,24 +73,17 @@ func BuildSnapshotFromStoreWithSecrets(st *store.Store, obs transporter.Observer
 	return assembleSnapshot(spec, callerStore, creds, provsSpec, capsSpec, obs, secretResolve)
 }
 
-// ValidateSpecs is a pure, cross-kind dry-run validator: it parses the four
-// canonical documents with the daemon's own parsers and runs the full
-// cross-kind assembly (keyring resolution, per-target adapter build), then
-// discards the resulting snapshot. It returns the first secret-free error, or
-// nil when the whole configuration would load. The declarative export/apply
-// path injects this so a bundle is validated identically to the serving path —
-// there is no second, weaker validator. No observer is wired (assembly only).
-//
-// This is the no-sealed-store variant: `secret:` credential references fail
-// closed. Use ValidateSpecsWith to validate identically to a daemon that has the
-// sealed store enabled.
+// ValidateSpecs is a dry run of a full load: it parses the canonical documents,
+// assembles a Snapshot and discards it. It returns the first secret-free error,
+// or nil if the configuration would load. Declarative apply uses it so a bundle
+// is validated the same way as the serving config. secret: references fail
+// closed; use ValidateSpecsWith to resolve them.
 func ValidateSpecs(permBytes, callerBytes, credBytes, provBytes, capsBytes []byte) error {
 	return ValidateSpecsWith(nil, permBytes, callerBytes, credBytes, provBytes, capsBytes)
 }
 
-// ValidateSpecsWith is ValidateSpecs with a sealed-store resolver so `secret:`
-// credential references are resolved exactly as the serving path would. A nil
-// resolver reproduces ValidateSpecs.
+// ValidateSpecsWith is ValidateSpecs with a resolver for secret: references, as
+// used when serving. A nil resolver behaves like ValidateSpecs.
 func ValidateSpecsWith(secretResolve SecretResolver, permBytes, callerBytes, credBytes, provBytes, capsBytes []byte) error {
 	spec, err := permeability.Parse(permBytes)
 	if err != nil {

@@ -1,12 +1,10 @@
-// Package responses implements the logical /v1/responses handler: Admit →
-// Authorize → Resolve (operation-gated) → Scrub → Transporter (+ Egress
-// Identity) → inward Scrub, for both non-streaming and streaming (SSE) responses.
-// Like the chat handler, no endpoint here accepts or emits provider endpoints,
-// credentials, or caller identity on the egress side.
+// Package responses implements the logical /v1/responses handler: Admit,
+// Authorize, Resolve, Scrub, Transporter with Egress Identity, then the inward
+// Scrub, for both plain and streaming (SSE) responses. No provider endpoint,
+// credential, or caller identity crosses to the egress side.
 //
-// It reuses the chat Snapshot (the per-request, immutable config bundle) since
-// that bundle is operation-agnostic; only the request/response shape and the
-// responses-specific transport capability differ.
+// It uses the chat Snapshot, which is operation-agnostic; only the request and
+// response shapes and the transport capability differ.
 package responses
 
 import (
@@ -32,8 +30,7 @@ import (
 // Route is the path this handler serves.
 const Route = "/v1/responses"
 
-// Stable, machine-handleable error codes, mirroring the chat handler's
-// provider-neutral error contract.
+// Stable error codes, matching the chat handler's provider-neutral errors.
 const (
 	codeMethodNotAllowed    = "method_not_allowed"
 	codeUnauthorized        = "unauthorized"
@@ -59,7 +56,7 @@ type Handler struct {
 	now     func() time.Time
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink. When unset, audit
@@ -72,7 +69,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -95,8 +92,7 @@ func NewReloadable(current func() *chat.Snapshot, logger *slog.Logger, rec metri
 }
 
 // observe records one served request to the identity-free metrics and the
-// Interior-only audit Sink. Responses reuse the Pathway-keyed chat recorder; the
-// stream flag distinguishes streaming requests.
+// Interior-only audit Sink, using the Pathway-keyed chat recorder.
 func (h *Handler) observe(callerID string, capID types.PathwayID, stream bool, outcome metrics.Outcome, latency time.Duration, input, output, total int) {
 	h.metrics.RecordChat(string(capID), stream, outcome, latency, input, output, total)
 	h.audit.Write(audit.Record{
@@ -166,9 +162,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Route-dispatch guard: /v1/responses serves only Pathways whose
-	// operation is `responses`. Any other operation is reported with the same
-	// generic unresolved_pathway error — no operation or Pathway enumeration oracle.
+	// This route serves only responses Pathways. Any other operation gets the
+	// generic unresolved_pathway error so Pathways cannot be enumerated.
 	if op, ok := snap.Resolver.Operation(capID); !ok || op != types.OperationResponses {
 		writeError(w, http.StatusBadRequest, codeUnresolvedPathway, "no binding for the requested pathway")
 		return
@@ -322,10 +317,9 @@ func planTiers(plan []resolve.PlanTarget) []transporter.PlanTier {
 }
 
 // buildCanonical assembles the provider-agnostic CanonicalRequest from the
-// responses request. Only the outbound-permeable fields are carried; the Scrub
-// then rebuilds the egress payload from the Pathway's outbound allowlist (which
-// drops stateful fields like store/previous_response_id and the metadata
-// denylist unless explicitly allowlisted).
+// responses request. The Scrub then rebuilds the egress payload from the
+// Pathway's outbound allowlist, which drops stateful fields such as store and
+// previous_response_id unless allowlisted.
 func buildCanonical(capID types.PathwayID, req types.ResponsesRequest, caller types.Caller) types.CanonicalRequest {
 	payload := map[string]any{"input": req.Input}
 	if req.Instructions != "" {
@@ -371,7 +365,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

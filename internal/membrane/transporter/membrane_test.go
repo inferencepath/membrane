@@ -21,8 +21,8 @@ type fakeProvider struct {
 	resp      types.CanonicalResponse
 	chunks    []types.StreamChunk
 	returnErr error
-	// streamEmitThenErr relays these chunks, then returns returnErr (to test the
-	// mid-stream failover guard).
+	// streamEmitThenErr relays these chunks and then returns returnErr, to test
+	// that a mid-stream failure does not fail over.
 	streamEmitThenErr []types.StreamChunk
 }
 
@@ -119,9 +119,8 @@ func contains(ss []string, want string) bool {
 	return false
 }
 
-// TestMembraneObserverFailoverAndHealth verifies the Membrane emits identity-free
-// failover + health signals: a failover away from the primary records a failover
-// (+ unhealthy) for it, and the succeeding secondary records healthy.
+// TestMembraneObserverFailoverAndHealth checks that failing over from the
+// primary marks it unhealthy and the serving secondary healthy.
 func TestMembraneObserverFailoverAndHealth(t *testing.T) {
 	primary := &fakeProvider{id: "openai", returnErr: providers.UpstreamStatusError{Status: 500}}
 	secondary := &fakeProvider{id: "anthropic", resp: types.CanonicalResponse{FinishReason: "stop"}}
@@ -145,8 +144,8 @@ func TestMembraneObserverFailoverAndHealth(t *testing.T) {
 	}
 }
 
-// TestMembraneObserverStreamHealth verifies the streaming path records healthy on
-// a clean stream and failover on a pre-first-byte stream failure.
+// TestMembraneObserverStreamHealth checks health and failover signals on the
+// streaming path.
 func TestMembraneObserverStreamHealth(t *testing.T) {
 	primary := &fakeProvider{id: "openai", returnErr: providers.UpstreamStatusError{Status: 503}}
 	secondary := &fakeProvider{id: "bedrock", chunks: []types.StreamChunk{{Delta: "a"}, {Done: true}}}
@@ -167,9 +166,8 @@ func TestMembraneObserverStreamHealth(t *testing.T) {
 	}
 }
 
-// TestMembraneObserverFailoverOnKeyringError verifies a keyring-resolution
-// failure also records a failover (+ unhealthy) for that target, on both the
-// unary and streaming paths.
+// TestMembraneObserverFailoverOnKeyringError checks that a Keyring failure
+// records a failover on both the unary and streaming paths.
 func TestMembraneObserverFailoverOnKeyringError(t *testing.T) {
 	fp := &fakeProvider{id: "anthropic"}
 	obs := &recordingObserver{}
@@ -320,7 +318,7 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	_ = req()
 	_ = req()
 	callsAtOpen := fp.calls
-	// While open, the target is skipped (no new adapter call).
+	// While open, the target is skipped.
 	if err := req(); !errors.Is(err, transporter.ErrNoProvider) {
 		t.Fatalf("open-breaker err = %v, want ErrNoProvider", err)
 	}
@@ -423,7 +421,7 @@ func TestStreamSkipsOpenBreaker(t *testing.T) {
 	// First attempt fails and opens the breaker (threshold 1).
 	_ = m.TransportStream(context.Background(), sanitize(t, true), noop)
 	callsAfterOpen := fp.calls
-	// Second attempt must skip the open target (no new adapter call).
+	// The second attempt skips the open target.
 	if err := m.TransportStream(context.Background(), sanitize(t, true), noop); !errors.Is(err, transporter.ErrNoProvider) {
 		t.Fatalf("err = %v, want ErrNoProvider while breaker open", err)
 	}

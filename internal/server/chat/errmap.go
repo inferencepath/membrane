@@ -1,9 +1,8 @@
-// Error normalization. A single, provider-neutral mapping turns
-// transport/provider errors into Caller-facing results and identity-free metrics
-// outcomes. The Caller never learns which Provider family, endpoint, region, or
-// deployment was involved — UNLESS it set Reveal, in which case the responsible
-// Provider family (and nothing finer) may be named, mirroring the Reveal gating
-// of the success path.
+// Transport and provider errors map to provider-neutral Caller responses and
+// identity-free metrics outcomes. The Caller never learns the Provider family,
+// endpoint, region or deployment involved, except that with Reveal set the
+// Provider family may be named, as on the success path.
+
 package chat
 
 import (
@@ -15,15 +14,13 @@ import (
 	"github.com/inferencepath/membrane/internal/observability/metrics"
 )
 
-// ErrorModelVersion is the version of the provider-neutral error contract
-// implemented here. Adding a new code is a MINOR change; changing the status for
-// an existing condition or removing/renaming a code is MAJOR.
+// ErrorModelVersion is the version of the Caller-facing error contract. Adding
+// a code is a minor change; changing the status for an existing condition or
+// removing or renaming a code is a major one.
 const ErrorModelVersion = 1
 
-// Stable, machine-handleable error codes. These are the single source of truth
-// for every Caller-facing surface and Interior gate; they are versioned by
-// ErrorModelVersion and mirrored in the API contract (chat-api.yaml) and
-// error-model.md. Keep this list and those documents in lockstep.
+// Stable error codes returned to Callers, versioned by ErrorModelVersion. Keep
+// the published API contract in sync when changing them.
 const (
 	codeMethodNotAllowed    = "method_not_allowed"
 	codeUnauthorized        = "unauthorized"
@@ -48,19 +45,18 @@ type neutralError struct {
 	message string
 }
 
-// mapError is the single source of truth for turning a transport/provider error
-// into a Caller-facing neutralError. It discloses the Provider family only when
-// reveal is set and the family is known.
+// mapError turns a transport or provider error into a neutralError. It names
+// the Provider family only when reveal is set and the family is known.
 func mapError(err error, reveal bool) neutralError {
-	// "No healthy target" (all breakers open / nothing resolvable) is a
-	// service-availability condition, distinct from an upstream-returned error.
+	// No healthy target (all breakers open, or nothing resolvable) is an
+	// availability condition, not an upstream error.
 	if errors.Is(err, transporter.ErrNoProvider) {
 		return neutralError{http.StatusServiceUnavailable, codeNoProviderAvailable,
 			"no provider is currently available for this pathway"}
 	}
 
-	// Tool calling requested for a pathway whose provider does not support it:
-	// a request-level error, mapped to 400 (never a provider-identifying 502).
+	// Unsupported tool calling is the request's fault, so it is a 400 rather
+	// than a 502 that would hint at the provider.
 	if errors.Is(err, providers.ErrToolCallingUnsupported) {
 		return neutralError{http.StatusBadRequest, codeBadRequest,
 			"tool calling is not supported for this pathway's provider"}
@@ -79,7 +75,6 @@ func mapError(err error, reveal bool) neutralError {
 			"the upstream provider returned an error"}
 	}
 
-	// Reveal gating: name the responsible family only when the Caller asked.
 	if reveal {
 		if p := providers.RevealableProvider(err); p != "" {
 			ge.message += " (provider: " + string(p) + ")"
@@ -88,8 +83,8 @@ func mapError(err error, reveal bool) neutralError {
 	return ge
 }
 
-// outcomeFor classifies an error into an identity-free metrics outcome, derived
-// from the same neutral FailureKind used for the HTTP mapping.
+// outcomeFor classifies err into a metrics outcome using the same FailureKind
+// as mapError.
 func outcomeFor(err error) metrics.Outcome {
 	if errors.Is(err, transporter.ErrNoProvider) {
 		return metrics.OutcomeInternalError
@@ -102,8 +97,8 @@ func outcomeFor(err error) metrics.Outcome {
 	}
 }
 
-// writeTransportError maps and writes a transport/provider error. It logs only
-// the neutral error string (never a secret or caller/provider identity).
+// writeTransportError maps and writes a transport or provider error. The log
+// line carries the neutral code and error string, never a secret or identity.
 func (h *Handler) writeTransportError(w http.ResponseWriter, err error, reveal bool) {
 	ge := mapError(err, reveal)
 	if ge.status >= 500 && ge.code != "provider_error" && ge.code != "upstream_unavailable" {

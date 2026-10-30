@@ -1,8 +1,7 @@
-// Tool-path Diffusion-leak tests. These drive the
-// fully-wired chat handler over a tool-enabled Pathway and assert that identity
-// cannot ride inside tool definitions, assistant tool_calls, arguments, or
-// tool-role results on the Membrane->Provider hop — across the non-streaming,
-// streaming, and error paths.
+// Tool-path Diffusion-leak tests. They drive the wired chat handler over a
+// tool-enabled Pathway and check that identity cannot travel inside tool
+// definitions, assistant tool_calls, arguments, or tool-role results on the
+// Membrane-to-Provider hop, on the non-streaming, streaming, and error paths.
 package diffusionleak
 
 import (

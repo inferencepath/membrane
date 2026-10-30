@@ -60,7 +60,7 @@ func TestScrubResponseRevealIncludesProviderModel(t *testing.T) {
 }
 
 func TestScrubResponseRevealGatedByOnRevealSet(t *testing.T) {
-	// on_reveal omits provider/model → even with reveal, they stay empty.
+	// on_reveal omits provider and model, so Reveal leaves them empty.
 	spec, err := permeability.Parse([]byte(`
 version: 1
 pathways:

@@ -13,8 +13,8 @@ import (
 	"github.com/inferencepath/membrane/test/harness"
 )
 
-// multipartBody builds a transcription multipart body with a file part (using the
-// given client filename to prove it is NOT forwarded) plus extra form fields.
+// multipartBody builds a transcription multipart body with a named file part
+// and extra form fields.
 func multipartBody(t *testing.T, filename string, fileBytes []byte, fields map[string]string) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -101,7 +101,7 @@ func TestTranscriptionSuccessNeutral(t *testing.T) {
 	if out.Provider != "" || out.Model != "" {
 		t.Errorf("provider/model leaked without reveal")
 	}
-	// The client filename must NOT be forwarded upstream.
+	// The client filename must not be forwarded upstream.
 	if bytes.Contains(fake.Last().Body, []byte("secret-recording.wav")) {
 		t.Errorf("DIFFUSION LEAK: client filename crossed the Membrane")
 	}

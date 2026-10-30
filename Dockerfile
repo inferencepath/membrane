@@ -1,4 +1,4 @@
-# Membrane — multi-stage, distroless, non-root container image.
+# Membrane: multi-stage, distroless, non-root container image.
 #
 # Build:
 #   docker build \
@@ -7,14 +7,14 @@
 #     --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
 #     -t inferencepath/membrane:dev .
 #
-# The image contains ONLY the statically-linked binary (no shell, no package
+# The image contains only the statically-linked binary (no shell, no package
 # manager) and runs as a non-root user. Configuration and secrets are provided
-# at runtime (mounted config + env/file/vault secret references) — never baked in.
+# at runtime (mounted config + env/file/vault secret references), never baked in.
 #
 # The Membrane Console (operator UI) is a static single-page app committed under
-# internal/server/console/webui/dist and compiled into the binary via go:embed —
-# so there is no separate web/Node build stage. When enabled it binds a SEPARATE
-# admin listener (default 127.0.0.1:7474), off the /v1/chat egress path.
+# internal/server/console/webui/dist and compiled into the binary via go:embed,
+# so there is no separate web/Node build stage. When enabled it binds a separate
+# admin listener (default 127.0.0.1:8300), off the /v1/chat egress path.
 
 # go.mod requires Go 1.26 (pulled in by the pure-Go SQLite state store).
 ARG GO_VERSION=1.26
@@ -32,7 +32,7 @@ ARG VERSION=0.0.0-dev
 ARG COMMIT=none
 ARG BUILD_TIME=unknown
 # CGO disabled -> a static binary that runs on distroless/scratch (the SQLite
-# driver is modernc.org/sqlite, a pure-Go implementation — no cgo).
+# driver is modernc.org/sqlite, a pure-Go implementation, so no cgo).
 ENV CGO_ENABLED=0
 RUN go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
@@ -60,9 +60,9 @@ VOLUME ["/var/lib/membrane"]
 
 # Non-root (uid 65532 from the distroless :nonroot tag).
 USER nonroot:nonroot
-# 8080: the data-plane egress API (/v1/chat). 7474: the optional Membrane Console
+# 8080: the data-plane egress API (/v1/chat). 8300: the optional Membrane Console
 # admin listener (bind to loopback or protect with an admin token when exposed).
-EXPOSE 8080 7474
+EXPOSE 8080 8300
 
 ENTRYPOINT ["/usr/local/bin/membrane"]
 CMD ["--config", "/etc/inferencepath/membrane.yaml"]

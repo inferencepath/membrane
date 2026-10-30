@@ -9,8 +9,7 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// namedPool builds a single-pathway pool whose targets carry provider names, so
-// a context-carried plan can select among them by name.
+// namedPool builds a one-Pathway pool of named targets for plan selection.
 func namedPool(targets ...transporter.TargetSpec) map[types.PathwayID]transporter.PoolSpec {
 	return map[types.PathwayID]transporter.PoolSpec{"chat": {Strategy: transporter.StrategyPriority, Targets: targets}}
 }
@@ -19,8 +18,8 @@ func namedTarget(a providers.Provider, name string, priority int) transporter.Ta
 	return transporter.TargetSpec{Adapter: a, ProviderName: name, KeyringRef: name, Model: "default-model", Priority: priority}
 }
 
-// TestTransportPlanSelectsProviderAndModel verifies a context plan picks the
-// named provider and overrides the model with the caller-chosen (sticky) one.
+// TestTransportPlanSelectsProviderAndModel checks that a plan picks the named
+// provider and the Caller's model.
 func TestTransportPlanSelectsProviderAndModel(t *testing.T) {
 	openai := &fakeProvider{id: "openai", resp: types.CanonicalResponse{FinishReason: "stop"}}
 	bedrock := &fakeProvider{id: "bedrock", resp: types.CanonicalResponse{FinishReason: "stop"}}
@@ -43,8 +42,8 @@ func TestTransportPlanSelectsProviderAndModel(t *testing.T) {
 	}
 }
 
-// TestTransportPlanCascadeFailover verifies the plan order drives failover: the
-// first tier fails (retryable), the second serves, each with its sticky model.
+// TestTransportPlanCascadeFailover checks that failover follows plan order,
+// with each tier keeping its own model.
 func TestTransportPlanCascadeFailover(t *testing.T) {
 	first := &fakeProvider{id: "openai", returnErr: providers.UpstreamStatusError{Status: 500}}
 	second := &fakeProvider{id: "bedrock", resp: types.CanonicalResponse{FinishReason: "stop"}}
@@ -67,8 +66,8 @@ func TestTransportPlanCascadeFailover(t *testing.T) {
 	}
 }
 
-// TestTransportPlanDefaultModel verifies an empty tier model falls back to the
-// target's configured default model.
+// TestTransportPlanDefaultModel checks that an empty tier model uses the
+// target's default.
 func TestTransportPlanDefaultModel(t *testing.T) {
 	openai := &fakeProvider{id: "openai", resp: types.CanonicalResponse{FinishReason: "stop"}}
 	m := transporter.New(

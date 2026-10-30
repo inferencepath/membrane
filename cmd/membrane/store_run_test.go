@@ -10,8 +10,8 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// seedBundleYAML is a complete declarative bundle (references/hashes only) used
-// to exercise seed-on-empty. It mirrors seedStore's single-pathway config.
+// seedBundleYAML is a complete seed bundle, with secret references and hashes
+// only. It matches the single-pathway config written by seedStore.
 const seedBundleYAML = `version: 1
 providers:
   - name: main
@@ -37,8 +37,8 @@ permeability:
       default: [message]
 `
 
-// runThenShutdown starts run, waits for startup, sends SIGTERM, and asserts a
-// graceful exit (code 0).
+// runThenShutdown starts run, waits for startup, sends SIGTERM, and expects
+// exit code 0.
 func runThenShutdown(t *testing.T, args []string) {
 	t.Helper()
 	done := make(chan int, 1)
@@ -73,9 +73,8 @@ func assertConfigured(t *testing.T, dir string) {
 	}
 }
 
-// TestRunSeedOnEmptyDefaultPath: a fresh store plus a <data_dir>/seed.yaml
-// bundle is applied once at startup, so the daemon comes up configured without
-// any manual steps (the docker-compose "just works" path).
+// TestRunSeedOnEmptyDefaultPath checks that <data_dir>/seed.yaml is applied to
+// a fresh store at startup.
 func TestRunSeedOnEmptyDefaultPath(t *testing.T) {
 	t.Setenv("RUN_STORE_KEY", "egress-token")
 	dir := t.TempDir()
@@ -87,7 +86,8 @@ func TestRunSeedOnEmptyDefaultPath(t *testing.T) {
 	assertConfigured(t, dir)
 }
 
-// TestRunSeedOnEmptyExplicitFlag: the --seed flag points at a bundle elsewhere.
+// TestRunSeedOnEmptyExplicitFlag checks that --seed can point at a bundle
+// outside data_dir.
 func TestRunSeedOnEmptyExplicitFlag(t *testing.T) {
 	t.Setenv("RUN_STORE_KEY", "egress-token")
 	dir := t.TempDir()
@@ -100,14 +100,14 @@ func TestRunSeedOnEmptyExplicitFlag(t *testing.T) {
 	assertConfigured(t, dir)
 }
 
-// TestRunSeedSkippedWhenConfigured: a store that is already configured must not
-// be re-seeded (idempotence) — the pre-existing config is preserved.
+// TestRunSeedSkippedWhenConfigured checks that an already configured store is
+// not re-seeded.
 func TestRunSeedSkippedWhenConfigured(t *testing.T) {
 	t.Setenv("RUN_STORE_KEY", "egress-token")
 	dir := t.TempDir()
 	seedStore(t, dir) // already configured
 
-	// A seed with a DIFFERENT pathway; it must NOT be applied.
+	// This seed has a different pathway and must not be applied.
 	altSeed := "version: 1\npathways:\n  - pathway: other\n    providers: [main]\ncredentials:\n  - name: main\n    secret_ref: env:RUN_STORE_KEY\n"
 	writeFile(t, filepath.Join(dir, "seed.yaml"), altSeed)
 
@@ -128,9 +128,9 @@ func TestRunSeedSkippedWhenConfigured(t *testing.T) {
 	_ = os.Remove(filepath.Join(dir, "seed.yaml"))
 }
 
-// seedStore opens a store under dir, inserts a complete valid single-pathway
-// configuration (references/hashes only), and closes it so the daemon can open
-// it fresh. It returns the data directory.
+// seedStore writes a complete single-pathway configuration, with secret
+// references and hashes only, to the store under dir and closes it so the
+// daemon can open it.
 func seedStore(t *testing.T, dir string) {
 	t.Helper()
 	s, err := store.Open(filepath.Join(dir, store.DBFileName))
@@ -155,9 +155,8 @@ func seedStore(t *testing.T, dir string) {
 	}
 }
 
-// TestRunStoreModeReadyThenShutdown exercises managed mode end to end: a seeded
-// store yields a ready daemon with the reloadable chat handler mounted; SIGHUP
-// triggers a (no-op) reload; then a graceful shutdown.
+// TestRunStoreModeReadyThenShutdown starts a ready daemon on a seeded store,
+// sends SIGHUP for a no-op reload, and shuts down.
 func TestRunStoreModeReadyThenShutdown(t *testing.T) {
 	t.Setenv("RUN_STORE_KEY", "egress-token")
 	dir := t.TempDir()
@@ -174,8 +173,8 @@ func TestRunStoreModeReadyThenShutdown(t *testing.T) {
 	runSIGHUPThenShutdown(t, []string{"--config", cfgPath})
 }
 
-// TestRunStoreModeIncompleteFailClosed: a fresh (empty) store leaves the daemon
-// not ready (fail closed), but it still starts and shuts down gracefully.
+// TestRunStoreModeIncompleteFailClosed checks that an empty store leaves the
+// daemon not ready but still able to start and shut down cleanly.
 func TestRunStoreModeIncompleteFailClosed(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "membrane.yaml")
@@ -186,10 +185,9 @@ func TestRunStoreModeIncompleteFailClosed(t *testing.T) {
 	runUntilSignal(t, []string{"--config", cfgPath})
 }
 
-// TestRunStoreModeOnboardingBecomesReady: the daemon starts against an empty
-// store (not ready), the store is then configured out-of-band, and a SIGHUP
-// reload transitions the daemon to ready without a restart — the managed
-// onboarding flow.
+// TestRunStoreModeOnboardingBecomesReady starts the daemon on an empty store,
+// configures the store out of band, and checks that a SIGHUP reload makes the
+// daemon ready without a restart.
 func TestRunStoreModeOnboardingBecomesReady(t *testing.T) {
 	t.Setenv("RUN_STORE_KEY", "egress-token")
 	dir := t.TempDir()
@@ -203,7 +201,7 @@ func TestRunStoreModeOnboardingBecomesReady(t *testing.T) {
 
 	// Let the daemon open the empty store and install the signal handler.
 	time.Sleep(400 * time.Millisecond)
-	// Configure the store out-of-band, then SIGHUP to rebuild and become ready.
+	// Configure the store out of band, then SIGHUP to rebuild.
 	seedStore(t, dir)
 	if err := syscall.Kill(syscall.Getpid(), syscall.SIGHUP); err != nil {
 		t.Fatalf("send SIGHUP: %v", err)

@@ -1,9 +1,9 @@
-// Package admit authenticates Callers by their Caller Key. It is Interior-only:
+// Package admit authenticates Callers by their Caller Key. It is Interior-only;
 // the authenticated Caller context never crosses the Membrane.
 //
-// A Caller Key is presented as "<key_id>.<secret>". The store holds only a hash
-// of the secret (never the plaintext); verification looks the key up by its
-// public KeyID and compares the hash of the presented secret in constant time.
+// A Caller Key is presented as "<key_id>.<secret>". The store holds a hash of
+// the secret, not the plaintext. Verification looks the key up by its public
+// KeyID and compares the hash of the presented secret in constant time.
 package admit
 
 import (
@@ -23,11 +23,11 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// ErrUnauthorized is returned for any authentication failure. It is intentionally
-// generic (no detail about which part failed) to avoid leaking information.
+// ErrUnauthorized is returned for any authentication failure. It does not say
+// which part failed.
 var ErrUnauthorized = errors.New("admit: unauthorized")
 
-// pathwayRe matches a logical Pathway id (callers.schema.json pathwayId).
+// pathwayRe matches a logical Pathway ID.
 var pathwayRe = regexp.MustCompile(`^[a-z][a-z0-9_.]*$`)
 
 type record struct {
@@ -36,8 +36,8 @@ type record struct {
 	name     string
 }
 
-// RateLimit is an optional per-Pathway fixed-window limit. It is parsed and
-// retained but enforcement is a separate concern.
+// RateLimit is an optional per-Pathway fixed-window limit. This package parses
+// and stores it but does not enforce it.
 type RateLimit struct {
 	Requests int
 	Window   time.Duration
@@ -47,11 +47,10 @@ type RateLimit struct {
 // authorization allowlist and optional rate limits, indexed by Interior CallerID.
 type Store struct {
 	byKeyID map[string]record
-	// allow maps a CallerID to the set of Pathways it is authorized for.
-	// Deny-by-default: a CallerID absent here (or with an empty set) is
-	// authorized for nothing.
+	// allow maps a CallerID to the Pathways it may use. A CallerID that is
+	// absent or has an empty set is authorized for nothing.
 	allow map[string]map[types.PathwayID]struct{}
-	// limits maps a CallerID to its per-Pathway rate limits (stretch).
+	// limits maps a CallerID to its per-Pathway rate limits.
 	limits map[string]map[types.PathwayID]RateLimit
 }
 
@@ -83,8 +82,8 @@ func LoadStore(path string) (*Store, error) {
 	return ParseStore(data)
 }
 
-// ParseStore validates raw YAML bytes into a Store. Plaintext secrets are never
-// present in the store; only hashes are accepted.
+// ParseStore validates raw YAML bytes into a Store. The store accepts secret
+// hashes only, never plaintext secrets.
 func ParseStore(data []byte) (*Store, error) {
 	var fs fileStore
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
@@ -92,15 +91,13 @@ func ParseStore(data []byte) (*Store, error) {
 	if err := dec.Decode(&fs); err != nil {
 		return nil, fmt.Errorf("admit: parse: %w", err)
 	}
-	// version is optional for backward compatibility with older stores; when
-	// present it must be 1.
+	// version is optional so older stores still load; if present it must be 1.
 	if fs.Version != 0 && fs.Version != 1 {
 		return nil, fmt.Errorf("admit: version must be 1, got %d", fs.Version)
 	}
-	// An empty caller store is valid: it is deny-by-default taken to its limit —
-	// no key authenticates, so every /v1/chat request is rejected (401/403). This
-	// lets operators configure routing (providers/pathways/permeability) first and
-	// add Caller Keys later, instead of forcing a chicken-and-egg bootstrap.
+	// An empty caller store is valid. No key authenticates, so every request is
+	// rejected, but operators can configure routing first and add Caller Keys
+	// later.
 	byKeyID := make(map[string]record, len(fs.Callers))
 	allow := make(map[string]map[types.PathwayID]struct{}, len(fs.Callers))
 	limits := make(map[string]map[types.PathwayID]RateLimit)
@@ -116,8 +113,7 @@ func ParseStore(data []byte) (*Store, error) {
 		}
 		byKeyID[c.KeyID] = record{hash: strings.ToLower(c.Hash), callerID: c.CallerID, name: c.Name}
 
-		// Deny-by-default allowlist, indexed by CallerID. Multiple keys mapping to
-		// the same CallerID union their allowlists.
+		// Keys that share a CallerID share the union of their allowlists.
 		set := allow[c.CallerID]
 		if set == nil {
 			set = make(map[types.PathwayID]struct{})
@@ -149,10 +145,9 @@ func ParseStore(data []byte) (*Store, error) {
 	return &Store{byKeyID: byKeyID, allow: allow, limits: limits}, nil
 }
 
-// CallerInfo is an identity-free, secret-free view of a stored Caller Key for
-// operator tooling (e.g. the Membrane Console). It carries the public KeyID, the
-// Interior CallerID, the optional display name, and the deny-by-default
-// allowlist — never the secret or its hash preimage.
+// CallerInfo is a view of a stored Caller Key for operator tooling such as the
+// Membrane Console. It has the public KeyID, the Interior CallerID, the
+// optional display name, and the allowlist, but no secret or hash.
 type CallerInfo struct {
 	KeyID    string
 	CallerID string
@@ -160,8 +155,8 @@ type CallerInfo struct {
 	Allow    []types.PathwayID
 }
 
-// List returns the stored callers in a stable (KeyID) order with their
-// allowlists resolved from the CallerID index. It never exposes a secret.
+// List returns the stored callers sorted by KeyID, each with the allowlist of
+// its CallerID.
 func (s *Store) List() []CallerInfo {
 	out := make([]CallerInfo, 0, len(s.byKeyID))
 	for keyID, rec := range s.byKeyID {
@@ -177,8 +172,7 @@ func (s *Store) List() []CallerInfo {
 }
 
 // Allows reports whether the given CallerID is authorized for the Pathway.
-// It is deny-by-default: an unknown CallerID, or one with no (or an empty)
-// allowlist, is authorized for nothing.
+// An unknown CallerID, or one with no allowlist, is authorized for nothing.
 func (s *Store) Allows(callerID string, pathway types.PathwayID) bool {
 	set, ok := s.allow[callerID]
 	if !ok {
@@ -188,8 +182,8 @@ func (s *Store) Allows(callerID string, pathway types.PathwayID) bool {
 	return ok
 }
 
-// Limit returns the configured per-Pathway rate limit for a CallerID and
-// whether one exists (absence means no limiting).
+// Limit returns the per-Pathway rate limit for a CallerID and whether one is
+// configured.
 func (s *Store) Limit(callerID string, pathway types.PathwayID) (RateLimit, bool) {
 	byCap, ok := s.limits[callerID]
 	if !ok {
@@ -200,8 +194,8 @@ func (s *Store) Limit(callerID string, pathway types.PathwayID) (RateLimit, bool
 }
 
 // Verify authenticates a presented Caller Key ("<key_id>.<secret>") and returns
-// the authenticated Caller. It returns ErrUnauthorized for any failure and
-// performs a constant-time comparison to avoid timing side channels.
+// the authenticated Caller, or ErrUnauthorized. The hash comparison is
+// constant-time.
 func (s *Store) Verify(presented string) (types.Caller, error) {
 	keyID, secret, ok := strings.Cut(presented, ".")
 	if !ok || keyID == "" || secret == "" {
@@ -209,8 +203,7 @@ func (s *Store) Verify(presented string) (types.Caller, error) {
 	}
 	rec, ok := s.byKeyID[keyID]
 	if !ok {
-		// Still compute a hash to reduce timing differences between unknown-key
-		// and wrong-secret paths.
+		// Hash anyway so an unknown key takes about as long as a wrong secret.
 		_ = HashSecret(secret)
 		return types.Caller{}, ErrUnauthorized
 	}
@@ -222,7 +215,7 @@ func (s *Store) Verify(presented string) (types.Caller, error) {
 }
 
 // HashSecret returns the lowercase hex-encoded SHA-256 of a Caller Key secret.
-// It is exported so operators/tooling can generate store entries consistently.
+// Tooling uses it to generate store entries.
 func HashSecret(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])

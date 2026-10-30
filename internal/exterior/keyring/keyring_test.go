@@ -101,8 +101,7 @@ func TestNewDuplicateName(t *testing.T) {
 	}
 }
 
-// fakeBackend is a controllable, concurrency-safe secret backend with an
-// injectable clock, used to prove zero-downtime rotation.
+// fakeBackend is a concurrency-safe secret backend whose values tests can change.
 type fakeBackend struct {
 	mu   sync.Mutex
 	vals map[string]string

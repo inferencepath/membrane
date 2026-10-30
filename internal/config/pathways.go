@@ -1,10 +1,7 @@
-// Package config also loads the routing file (pathways.yaml): the
-// config-as-code mapping from each logical Pathway to its pool of Provider
-// targets and selection strategy. It is parse-only and fails closed: unknown
-// fields, unknown providers/strategies, duplicate or malformed Pathway ids,
-// missing targets, and inline secrets are all rejected. Credentials never appear
-// here — each target references one by keyring_ref into the credentials file;
-// cross-file resolution happens at wiring time.
+// Package config also parses the pathways document, which maps each Pathway
+// to the Providers it may route to. Parsing fails closed on unknown fields and
+// on malformed or duplicate names. Provider names are resolved against the
+// providers document later, at wiring time.
 package config
 
 import (
@@ -16,18 +13,17 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// PathwaysSpec is the parsed routing configuration: one route per logical
-// Pathway. Server-side only; never disclosed to a Caller.
+// PathwaysSpec is the parsed routing configuration, one route per Pathway. It
+// is never disclosed to a Caller.
 type PathwaysSpec struct {
 	Version int
 	Routes  []PathwayRoute
 }
 
-// PathwayRoute maps one Pathway to the admin-attached set of providers it may
-// route to, which one is the default (used when the caller supplies no cascade),
-// and whether a caller may supply its own provider+model cascade at request time.
-// All connection config and the allowed-model policy live on the provider,
-// resolved at wiring time; the pathway only selects providers by name.
+// PathwayRoute maps one Pathway to the providers it may route to, the default
+// provider used when the caller sends no cascade, and whether a caller may
+// send its own provider and model cascade. Connection settings and allowed
+// models belong to the provider.
 type PathwayRoute struct {
 	Pathway         types.PathwayID
 	Operation       types.Operation
@@ -49,11 +45,9 @@ type pathwayRouteYAML struct {
 	Providers       []string `yaml:"providers"`
 }
 
-// ParsePathways validates raw YAML bytes into a PathwaysSpec, rejecting
-// unknown fields, unknown providers/strategies, duplicate/malformed Pathway
-// ids, empty target lists, and inline secrets. keyring_ref values are validated
-// structurally; their existence is checked against the credentials file at
-// wiring time.
+// ParsePathways validates raw YAML into a PathwaysSpec. It rejects unknown
+// fields, unknown operations, malformed or duplicate pathway and provider
+// names, empty provider lists, and a default_provider outside the list.
 func ParsePathways(data []byte) (PathwaysSpec, error) {
 	var fc pathwaysFileYAML
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -99,12 +93,11 @@ func ParsePathways(data []byte) (PathwaysSpec, error) {
 				return PathwaysSpec{}, fmt.Errorf("pathways config: pathways[%d] (%s): duplicate provider %q", ci, c.Pathway, p)
 			}
 			provSet[p] = struct{}{}
-			// Provider existence is resolved against the providers config at
-			// wiring time, not here.
+			// Whether the provider exists is checked at wiring time.
 			route.Providers = append(route.Providers, p)
 		}
-		// Default provider: explicit must be in the set; otherwise the first
-		// listed provider is the default.
+		// An explicit default must be in the list; otherwise the first
+		// provider is the default.
 		def := c.DefaultProvider
 		if def == "" {
 			def = route.Providers[0]

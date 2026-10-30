@@ -22,8 +22,8 @@ var denylistSubstrings = []string{
 	"user", "metadata", "cookie", "agent", "reveal", "token", "secret",
 }
 
-// TestSanitizedRequestHasNoExportedFields proves that no external package can
-// read or set any field of a SanitizedRequest — identity cannot be injected.
+// TestSanitizedRequestHasNoExportedFields checks that no external package can
+// read or set a SanitizedRequest field, so identity cannot be injected into one.
 func TestSanitizedRequestHasNoExportedFields(t *testing.T) {
 	rt := reflect.TypeOf(scrub.SanitizedRequest{})
 	for i := 0; i < rt.NumField(); i++ {

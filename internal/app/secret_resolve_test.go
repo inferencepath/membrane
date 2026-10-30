@@ -11,9 +11,8 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// sealedStore opens a store seeded with a complete config whose credential uses a
-// `secret:<name>` reference, and returns the store plus a sealed-store resolver
-// backed by a Manager holding that secret.
+// sealedStore returns a store whose provider credential is a secret: reference,
+// plus a resolver that holds that secret.
 func sealedStore(t *testing.T) (*store.Store, app.SecretResolver) {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), store.DBFileName))
@@ -62,7 +61,7 @@ func TestBuildSnapshotResolvesSealedSecret(t *testing.T) {
 
 func TestBuildSnapshotSealedSecretFailsClosedWithoutResolver(t *testing.T) {
 	s, _ := sealedStore(t)
-	// No resolver: the `secret:` reference cannot be resolved → fail closed.
+	// Without a resolver the secret: reference fails closed.
 	if _, _, err := app.BuildSnapshotFromStore(s, nil); err == nil {
 		t.Fatal("expected fail-closed error for secret: reference without a resolver")
 	}
@@ -106,7 +105,7 @@ func TestValidateSpecsWithSealedResolver(t *testing.T) {
 	if err := app.ValidateSpecs(perm, callers, creds, prov, caps); err == nil {
 		t.Fatal("expected fail-closed validation for secret: reference without a resolver")
 	} else if !strings.Contains(err.Error(), "secret") {
-		// The error should reference the unresolved scheme/credential.
+		// The error should name the unresolved reference.
 		t.Logf("fail-closed error (ok): %v", err)
 	}
 }

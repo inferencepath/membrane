@@ -136,7 +136,7 @@ func TestRemoteDeniedWithoutToken(t *testing.T) {
 func TestRemoteAllowedWithToken(t *testing.T) {
 	h := newConsole(stubStatus{ready: true}, metrics.NewRegistry(), "s3cr3t-admin")
 
-	// Wrong token → denied.
+	// Wrong token is denied.
 	bad := get(t, h, "/api/console/status", "10.0.0.5:1", map[string]string{"Authorization": "Bearer nope"})
 	if bad.Code != http.StatusUnauthorized {
 		t.Fatalf("bad token = %d, want 401", bad.Code)
@@ -172,9 +172,8 @@ func TestServesEmbeddedUI(t *testing.T) {
 }
 
 func TestLoginOverlayCanBeHidden(t *testing.T) {
-	// Regression: the `.login-overlay` class sets display:flex, which overrides
-	// the UA [hidden] rule. Without an explicit [hidden] guard the login screen
-	// can never be dismissed. Assert the guard is present in the shipped UI.
+	// .login-overlay sets display:flex, which overrides the UA [hidden] rule;
+	// without an explicit [hidden] rule the login screen cannot be dismissed.
 	h := newConsole(stubStatus{ready: true}, metrics.NewRegistry(), "")
 	shell := get(t, h, "/", "127.0.0.1:1", nil)
 	if !strings.Contains(shell.Body.String(), ".login-overlay[hidden]") {
@@ -183,9 +182,8 @@ func TestLoginOverlayCanBeHidden(t *testing.T) {
 }
 
 func TestStaticShellIsPublicButAPIIsProtected(t *testing.T) {
-	// With a token configured, a NON-local client can still load the UI shell
-	// (so it can show a login screen) but is denied the control API until it
-	// presents the token.
+	// With a token configured, a non-local client can load the UI shell but not
+	// the control API until it presents the token.
 	h := newConsole(stubStatus{ready: true}, metrics.NewRegistry(), "s3cr3t-admin")
 
 	shell := get(t, h, "/", "10.0.0.5:5000", nil)
@@ -206,8 +204,7 @@ func TestStaticShellIsPublicButAPIIsProtected(t *testing.T) {
 
 func TestConsoleDoesNotServeChat(t *testing.T) {
 	h := newConsole(stubStatus{ready: true}, metrics.NewRegistry(), "")
-	// The console must not expose the egress path; /v1/chat is not a route, so it
-	// falls back to the SPA shell (HTML), never a chat handler.
+	// /v1/chat is not a console route, so it falls back to the SPA shell.
 	rec := get(t, h, "/v1/chat", "127.0.0.1:1", nil)
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Fatalf("/v1/chat content-type = %q, want the static SPA (no chat handler)", ct)
@@ -249,7 +246,7 @@ type stubConfig struct {
 }
 
 func (s stubConfig) Server() console.ServerView {
-	return console.ServerView{Address: ":8080", ShutdownTimeout: "30s", AuditSink: "discard", ConsoleEnabled: true, ConsoleAddress: "127.0.0.1:7474"}
+	return console.ServerView{Address: ":8080", ShutdownTimeout: "30s", AuditSink: "discard", ConsoleEnabled: true, ConsoleAddress: "127.0.0.1:8300"}
 }
 
 func (s stubConfig) Pathways() (console.PathwaysView, error) {
@@ -394,8 +391,7 @@ func TestMethodNotAllowed(t *testing.T) {
 }
 
 func TestLoopbackRemoteWithoutPort(t *testing.T) {
-	// A RemoteAddr without a port (SplitHostPort error path) is still treated by
-	// the IP parse fallback: a bare loopback address is allowed.
+	// A bare loopback RemoteAddr without a port is still allowed.
 	h := newConsole(stubStatus{ready: true}, metrics.NewRegistry(), "")
 	rec := get(t, h, "/api/console/status", "127.0.0.1", nil)
 	if rec.Code != http.StatusOK {
@@ -662,8 +658,8 @@ func TestTestPathwayProxiesToDataPlane(t *testing.T) {
 }
 
 func TestTestPathwayUpstreamError(t *testing.T) {
-	// Port 1 refuses connections → the proxy reports a bad gateway and records an
-	// "error" admin action.
+	// Port 1 refuses connections, so the proxy reports a bad gateway and records
+	// an "error" admin action.
 	h := console.New(console.Config{
 		Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry(), ChatBaseURL: "http://127.0.0.1:1",
 	}).Handler()
@@ -728,8 +724,7 @@ func TestAdminAuditRecordsRemoteHostAndOutcomes(t *testing.T) {
 	}
 }
 
-// TestNilLoggerIsSafe constructs a console without a logger to exercise the
-// no-op logger default.
+// TestNilLoggerIsSafe exercises the no-op logger default.
 func TestNilLoggerIsSafe(t *testing.T) {
 	c := console.New(console.Config{Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry()})
 	if c.Handler() == nil {

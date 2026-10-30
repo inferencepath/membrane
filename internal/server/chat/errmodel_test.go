@@ -31,9 +31,8 @@ func decodeEnvelope(t *testing.T, body io.Reader) (code, message string) {
 	return env.Error.Code, env.Error.Message
 }
 
-// TestErrorModelConformanceGates asserts that every Interior gate yields the
-// documented status AND stable code from contracts/error-model.md, for both the
-// unary and streaming surfaces (the gates run before the stream flag matters).
+// TestErrorModelConformanceGates checks the status and code of each Interior
+// gate, for both unary and streaming requests.
 func TestErrorModelConformanceGates(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "x"})
@@ -84,13 +83,12 @@ func TestErrorModelConformanceGates(t *testing.T) {
 	}
 }
 
-// TestErrorModelConformanceForbidden covers the deny-by-default Authorize gate
-// (403 forbidden), which requires an authorizer-wired handler.
+// TestErrorModelConformanceForbidden checks the 403 from the Authorize gate.
 func TestErrorModelConformanceForbidden(t *testing.T) {
 	t.Setenv(harness.EgressEnv, harness.EgressToken)
 	fake := fakeoa.New(fakeoa.Config{Content: "x"})
 	defer fake.Close()
-	// Authorized for nothing => chat is forbidden (deny-by-default).
+	// Authorized for nothing, so chat is forbidden.
 	ts := httptest.NewServer(buildAuthzChat(t, fake.URL()))
 	defer ts.Close()
 
@@ -104,8 +102,8 @@ func TestErrorModelConformanceForbidden(t *testing.T) {
 	}
 }
 
-// TestErrorModelConformanceTransport asserts the transport/provider failure
-// conditions map to the documented status AND code on the unary surface.
+// TestErrorModelConformanceTransport checks the status and code for each
+// transport failure on unary requests.
 func TestErrorModelConformanceTransport(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -138,9 +136,8 @@ func TestErrorModelConformanceTransport(t *testing.T) {
 	}
 }
 
-// TestErrorModelStreamPreFirstByte verifies a streaming request that fails
-// BEFORE the first byte uses the standard JSON envelope (status change), not a
-// terminal SSE error event.
+// TestErrorModelStreamPreFirstByte checks that a stream failing before the
+// first byte gets a JSON error response rather than an SSE error event.
 func TestErrorModelStreamPreFirstByte(t *testing.T) {
 	ts := httptest.NewServer(handlerWith(t, errTransport{err: providers.UpstreamStatusError{Status: 500}}))
 	defer ts.Close()
@@ -157,9 +154,8 @@ func TestErrorModelStreamPreFirstByte(t *testing.T) {
 	}
 }
 
-// TestErrorModelStreamPostFirstByte verifies a failure AFTER the first byte
-// emits a neutral terminal SSE error event (stream_error) with no status change
-// and no silent provider switch / internal detail.
+// TestErrorModelStreamPostFirstByte checks that a failure after the first byte
+// ends the stream with a neutral stream_error event.
 func TestErrorModelStreamPostFirstByte(t *testing.T) {
 	ts := httptest.NewServer(handlerWith(t, midErrTransport{}))
 	defer ts.Close()
@@ -175,9 +171,8 @@ func TestErrorModelStreamPostFirstByte(t *testing.T) {
 	}
 }
 
-// TestErrorModelNonDisclosure asserts no Exterior topology (endpoint, region,
-// deployment, ARN, keyring_ref) ever appears, and the Provider family appears
-// only under Reveal.
+// TestErrorModelNonDisclosure checks that errors never expose Exterior topology
+// and name the Provider family only under Reveal.
 func TestErrorModelNonDisclosure(t *testing.T) {
 	stamped := providers.UpstreamStatusError{Status: 500, Provider: "bedrock"}
 	for _, reveal := range []bool{false, true} {
@@ -198,7 +193,7 @@ func TestErrorModelNonDisclosure(t *testing.T) {
 			if got := strings.Contains(lower, "bedrock"); got != reveal {
 				t.Fatalf("family disclosed = %v, want %v; body=%s", got, reveal, raw)
 			}
-			// Topology must NEVER leak, regardless of Reveal.
+			// Topology never appears, with or without Reveal.
 			for _, forbidden := range []string{"http://", "https://", "us-east", "us-west", "deployment", "arn:", "keyring", "ref-", "x-api-key", "akia"} {
 				if strings.Contains(lower, forbidden) {
 					t.Fatalf("error body leaked topology %q: %s", forbidden, raw)

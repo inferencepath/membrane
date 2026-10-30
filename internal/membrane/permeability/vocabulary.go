@@ -7,17 +7,16 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// This file defines the per-Operation Permeability field vocabularies and the
-// validation that a Pathway's policy only lists field names valid for its
-// Operation. It complements the identity/control denylist (permeability.go),
-// which is a Membrane-wide floor applied to the OUTBOUND set of EVERY operation.
+// Per-operation field vocabularies. A Pathway's policy may list only fields
+// valid for its Operation. The identity and control denylist applies to the
+// outbound set of every operation on top of this.
 
-// directionVocab is the allowable field-name set for one direction of one
-// operation. A field not present here is rejected fail-closed at assembly.
+// directionVocab holds the valid field names for each direction of one
+// operation. Any other field is rejected at assembly.
 type directionVocab struct {
 	outbound map[string]struct{}
-	// inbound covers both inbound.default and inbound.on_reveal; the on_reveal
-	// disclosure fields (provider/model) are included so a policy may list them.
+	// inbound covers both inbound.default and inbound.on_reveal, so it
+	// includes the provider and model disclosure fields.
 	inbound map[string]struct{}
 }
 
@@ -29,14 +28,10 @@ func set(fields ...string) map[string]struct{} {
 	return m
 }
 
-// operationVocab is the authoritative per-operation field vocabulary for the
-// non-chat operations. It is the single source of truth consulted by
+// operationVocab is the field vocabulary for each non-chat operation, used by
 // ValidateVocabulary.
 //
-// `chat` is deliberately ABSENT: it is left unrestricted to preserve the exact
-// prior behavior (any non-denylisted field name is permitted outbound),
-// so existing chat pathways need no migration. The identity/control
-// denylist (permeability.go) still applies to chat's outbound set, as before.
+// chat has no entry: any field not on the denylist is permitted outbound.
 var operationVocab = map[types.Operation]directionVocab{
 	types.OperationEmbeddings: {
 		outbound: set("input", "encoding_format", "dimensions"),
@@ -68,9 +63,9 @@ var operationVocab = map[types.Operation]directionVocab{
 	},
 }
 
-// Vocabulary returns the sorted allowable outbound and inbound field names for an
-// operation, for display (e.g. the Console field palette). Unknown operations
-// yield empty slices.
+// Vocabulary returns the sorted outbound and inbound field names valid for op,
+// for display in the Console field palette. It returns nil slices for chat and
+// for unknown operations.
 func Vocabulary(op types.Operation) (outbound, inbound []string) {
 	v, ok := operationVocab[op]
 	if !ok {
@@ -88,11 +83,9 @@ func sortedKeys(m map[string]struct{}) []string {
 	return out
 }
 
-// ValidateVocabulary checks that the DirectionSets for a Pathway only list field
-// names valid for the given Operation. The outbound denylist is enforced
-// elsewhere (at Parse); this adds the per-operation vocabulary gate used at
-// assembly, once the Pathway's Operation is known. It fails closed on an unknown
-// operation and on any out-of-vocabulary field name.
+// ValidateVocabulary checks that ds lists only fields valid for op. It runs at
+// assembly, once the Pathway's Operation is known; the denylist is checked
+// earlier by Parse. An unknown operation or field is an error.
 func ValidateVocabulary(pathway types.PathwayID, op types.Operation, ds DirectionSets) error {
 	if op == "" {
 		op = types.DefaultOperation
@@ -100,15 +93,14 @@ func ValidateVocabulary(pathway types.PathwayID, op types.Operation, ds Directio
 	if !op.Valid() {
 		return fmt.Errorf("permeability: pathway %q: unknown operation %q", pathway, op)
 	}
-	// `chat` is unrestricted (backward compatibility); only the denylist floor
-	// enforced at Parse applies to it.
+	// chat is unrestricted; only the denylist checked by Parse applies.
 	if op == types.OperationChat {
 		return nil
 	}
 	v, ok := operationVocab[op]
 	if !ok {
-		// A recognized non-chat operation must have a vocabulary; its absence is
-		// a programming error, not operator input.
+		// Every known non-chat operation has a vocabulary, so this is a
+		// programming error rather than bad operator input.
 		return fmt.Errorf("permeability: pathway %q: no vocabulary defined for operation %q", pathway, op)
 	}
 	for _, f := range ds.Outbound.Allow {

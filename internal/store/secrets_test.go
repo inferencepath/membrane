@@ -75,7 +75,7 @@ func TestPutSecretBumpsVersionOnUpsert(t *testing.T) {
 		t.Fatalf("upsert row = %+v, want ciphertext b version 2", row)
 	}
 
-	// A single logical row only.
+	// Still a single row.
 	var n int
 	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM secrets`).Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)
@@ -132,8 +132,7 @@ func TestDeleteAndHasSecret(t *testing.T) {
 	}
 }
 
-// Ensure the fresh-store table list now includes secrets, keeping the schema
-// assertion in sync with the migration.
+// TestFreshStoreIncludesSecretsTable checks that a new store has the secrets table.
 func TestFreshStoreIncludesSecretsTable(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), store.DBFileName))
 	if err != nil {

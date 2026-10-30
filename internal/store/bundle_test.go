@@ -58,7 +58,7 @@ func TestRenderKindFromBundle(t *testing.T) {
 		if err != nil || len(doc) == 0 {
 			t.Fatalf("render kind %q = %q (err %v)", kind, doc, err)
 		}
-		// Must match the store's own single-kind render for the same data.
+		// Must match the single-kind render of the same data.
 		want, _ := s.Render(kind)
 		if string(doc) != string(want) {
 			t.Fatalf("kind %q render mismatch:\nfrom bundle=%s\nfrom store =%s", kind, doc, want)
@@ -121,8 +121,7 @@ func TestWriteBundleAtomicOnFailure(t *testing.T) {
 
 	before, _ := s.RenderBundle()
 
-	// A target referencing a missing pathway violates the foreign key, so the
-	// whole bundle write must roll back — leaving the original state intact.
+	// A failing bundle write must roll back and leave the original state.
 	bad := store.Bundle{
 		Providers:   []store.ProviderRow{{Name: "p1", Family: "openai", Endpoint: "https://x", Models: []string{"m"}, DefaultModel: "m", SecretRef: "env:X"}},
 		Pathways:    []store.PathwayRow{{Name: "ok", DefaultProvider: "p1", Providers: []string{"p1"}}},
@@ -132,11 +131,7 @@ func TestWriteBundleAtomicOnFailure(t *testing.T) {
 			Allow: []string{"ok"},
 		}},
 	}
-	// Corrupt an allow row to reference a non-existent caller by writing callers
-	// with an allow for a key that will not exist — instead force a FK error via
-	// a permeability row is not FK-constrained, so inject via a caller_allow with
-	// a bogus key through a raw path is not possible here. Use a duplicate PK
-	// instead: two pathways with the same name violates the primary key.
+	// Two pathways with the same name violate the primary key.
 	bad.Pathways = append(bad.Pathways, store.PathwayRow{Name: "ok", DefaultProvider: "p1", Providers: []string{"p1"}})
 
 	if err := s.WriteBundle(bad); err == nil {

@@ -6,19 +6,18 @@ import (
 	"net/http"
 )
 
-// webUI holds the embedded Membrane Console single-page UI. Embedding the assets
-// in the binary is what gives the Jenkins/Neo4j experience: build the image,
-// open the port, operate in a browser — no second service or runtime dependency.
+// webUI holds the embedded Membrane Console single-page UI, so the Console
+// needs no separate service or runtime dependency.
 //
 //go:embed webui/dist
 var webUI embed.FS
 
-// staticHandler serves the embedded UI. Unknown paths fall back to index.html so
-// client-side routing works (SPA behavior).
+// staticHandler serves the embedded UI. Unknown paths fall back to index.html
+// so client-side routing works.
 func staticHandler() http.Handler {
 	sub, err := fs.Sub(webUI, "webui/dist")
 	if err != nil {
-		// The embed directive guarantees webui/dist exists at build time.
+		// Unreachable: the embed directive requires webui/dist at build time.
 		panic(err)
 	}
 	fileServer := http.FileServer(http.FS(sub))
@@ -35,7 +34,7 @@ func staticHandler() http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		// SPA fallback: serve the shell for unknown (client-routed) paths.
+		// Unknown paths are client-side routes; serve the SPA shell.
 		serveIndex(w, index)
 	})
 }

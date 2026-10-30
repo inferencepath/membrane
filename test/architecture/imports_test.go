@@ -1,6 +1,6 @@
-// Package architecture holds tests that enforce cross-zone import rules: the
-// Exterior and the Interior audit subsystem must not share references, so
-// identity has no path across the Membrane.
+// Package architecture holds tests for cross-zone import rules. The Exterior
+// and the Interior audit package must not import each other, so identity has
+// no path across the Membrane.
 package architecture
 
 import (
@@ -19,12 +19,12 @@ func repoRoot(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// test/architecture -> repo root is two levels up.
+	// The repo root is two levels above test/architecture.
 	return filepath.Clean(filepath.Join(wd, "..", ".."))
 }
 
-// importsOfTree returns, for each buildable package dir under root/rel, its
-// (non-test) import paths.
+// importsOfTree maps each buildable package directory under root/rel to its
+// non-test imports.
 func importsOfTree(t *testing.T, root, rel string) map[string][]string {
 	t.Helper()
 	base := filepath.Join(root, rel)
@@ -74,11 +74,10 @@ func TestAuditDoesNotImportExterior(t *testing.T) {
 	}
 }
 
-// TestConsoleDoesNotImportEgressOrInterior asserts the Membrane Console is a pure
-// operator surface: it must not import the egress chat handler (so it can never
-// mount or build the /v1/chat path) nor any Interior/Membrane/Exterior package
-// that carries caller identity, secrets, or the Scrub/Transporter contract. The
-// console reads only via injected, identity-free interfaces (status + metrics).
+// TestConsoleDoesNotImportEgressOrInterior checks that the Membrane Console
+// imports neither the egress chat handler nor any Interior, Membrane, or
+// Exterior package. The Console reads status and metrics through injected,
+// identity-free interfaces.
 func TestConsoleDoesNotImportEgressOrInterior(t *testing.T) {
 	root := repoRoot(t)
 	forbidden := []string{
@@ -96,4 +95,49 @@ func TestConsoleDoesNotImportEgressOrInterior(t *testing.T) {
 			}
 		}
 	}
+}
+
+// allowedThirdParty lists the third-party module prefixes that cmd/ and
+// internal/ may import. Anything else is a test failure.
+var allowedThirdParty = []string{
+	"github.com/aws/aws-sdk-go-v2",
+	"github.com/aws/smithy-go",
+	"github.com/Azure/azure-sdk-for-go/sdk",
+	"golang.org/x/oauth2",
+	"gopkg.in/yaml.v3",
+	"modernc.org/sqlite",
+}
+
+// TestCoreDependencyAllowlist checks that every non-test import in cmd/ and
+// internal/ is the standard library, this module, or an allowlisted module.
+func TestCoreDependencyAllowlist(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range []string{"internal", "cmd"} {
+		for dir, imps := range importsOfTree(t, root, rel) {
+			for _, imp := range imps {
+				if isStdlib(imp) || imp == module || strings.HasPrefix(imp, module+"/") {
+					continue
+				}
+				if !hasAllowedPrefix(imp) {
+					t.Errorf("%s imports %q, which is not on the core dependency allowlist", dir, imp)
+				}
+			}
+		}
+	}
+}
+
+// isStdlib reports whether imp is a standard library path, meaning its first
+// element has no dot.
+func isStdlib(imp string) bool {
+	first, _, _ := strings.Cut(imp, "/")
+	return !strings.Contains(first, ".")
+}
+
+func hasAllowedPrefix(imp string) bool {
+	for _, p := range allowedThirdParty {
+		if imp == p || strings.HasPrefix(imp, p+"/") {
+			return true
+		}
+	}
+	return false
 }

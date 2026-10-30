@@ -65,8 +65,8 @@ func TestCompleteSignsAndSucceeds(t *testing.T) {
 	if !strings.Contains(gotPath, "/model/anthropic.claude-3-5-sonnet/converse") {
 		t.Errorf("path = %q", gotPath)
 	}
-	// System turns are lifted to the top-level "system" field; they must NOT
-	// remain inside messages (the bug that returned 502).
+	// System turns must move to the top-level "system" field; Bedrock returns an
+	// error if they stay inside messages.
 	sys, ok := gotBody["system"].([]any)
 	if !ok || len(sys) != 1 {
 		t.Fatalf("system = %v, want one entry lifted out of messages", gotBody["system"])
@@ -123,7 +123,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Errorf("path = %q", gotPath)
 	}
 
-	// Outbound: neutral tools mapped to Converse toolConfig.
+	// Neutral tools map to Converse toolConfig.
 	tcfg, ok := gotBody["toolConfig"].(map[string]any)
 	if !ok {
 		t.Fatalf("toolConfig missing: %v", gotBody)
@@ -139,7 +139,7 @@ func TestCompleteToolCalling(t *testing.T) {
 		t.Errorf("toolChoice = %v", tcfg["toolChoice"])
 	}
 
-	// Inbound: toolUse normalized to canonical; tool_use → tool_calls.
+	// toolUse maps to canonical tool calls, and tool_use to tool_calls.
 	if len(resp.Message.ToolCalls) != 1 {
 		t.Fatalf("tool_calls = %+v", resp.Message.ToolCalls)
 	}

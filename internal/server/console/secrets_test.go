@@ -11,8 +11,7 @@ import (
 	"github.com/inferencepath/membrane/internal/server/console"
 )
 
-// stubSecrets is a controllable SecretManager. It records the last value it was
-// handed so a test can prove the value is accepted but never echoed in responses.
+// stubSecrets is a SecretManager that records the last value it was given.
 type stubSecrets struct {
 	list       console.SecretsView
 	listErr    error
@@ -143,7 +142,7 @@ func TestSecretsUnavailableWhenNil(t *testing.T) {
 
 func TestSecretsRequireAuthNonLocal(t *testing.T) {
 	h := newConsoleWithSecrets(&stubSecrets{})
-	// Non-local, no token configured ⇒ fail closed (401) before reaching handler.
+	// A non-local client with no token configured fails closed with 401.
 	rec := reqNoBody(t, h, http.MethodGet, "/api/console/secrets", "10.0.0.5:1")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("non-local secrets = %d, want 401", rec.Code)

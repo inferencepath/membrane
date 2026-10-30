@@ -62,14 +62,14 @@ func TestBackoffCooldownFor(t *testing.T) {
 	}
 }
 
-// TestTargetHealthCooldownEscalates proves consecutive breaker trips lengthen
-// the open-state cooldown per the escalation policy.
+// TestTargetHealthCooldownEscalates checks that consecutive trips lengthen the
+// cooldown.
 func TestTargetHealthCooldownEscalates(t *testing.T) {
 	h := &targetHealth{}
 	b := BackoffPolicy{BreakerThreshold: 1, Base: time.Second, Factor: 2, Max: time.Hour}
 	now := time.Unix(0, 0)
 
-	// First failure opens (trip 1): cooldown == Base (1s).
+	// The first failure opens the breaker with a cooldown of Base (1s).
 	h.recordFailure(now, b)
 	if h.available(now.Add(900*time.Millisecond), b) {
 		t.Fatal("within first cooldown must be unavailable")
@@ -77,7 +77,7 @@ func TestTargetHealthCooldownEscalates(t *testing.T) {
 	if !h.available(now.Add(time.Second), b) {
 		t.Fatal("after first cooldown a probe should be allowed")
 	}
-	// Probe fails (trip 2): cooldown escalates to Base*Factor == 2s.
+	// A failed probe reopens it with a cooldown of Base*Factor (2s).
 	probeAt := now.Add(time.Second)
 	h.recordFailure(probeAt, b)
 	if h.available(probeAt.Add(time.Second), b) {
@@ -90,7 +90,7 @@ func TestTargetHealthCooldownEscalates(t *testing.T) {
 
 func TestTargetHealthBreakerDisabled(t *testing.T) {
 	h := &targetHealth{}
-	b := BackoffPolicy{} // threshold 0 → disabled
+	b := BackoffPolicy{} // zero threshold disables the breaker
 	now := time.Unix(0, 0)
 	if !h.available(now, b) {
 		t.Fatal("disabled breaker must always be available")
@@ -110,7 +110,7 @@ func TestTargetHealthLifecycle(t *testing.T) {
 	if !h.available(now, b) {
 		t.Fatal("closed should be available")
 	}
-	// One failure: still closed/available.
+	// One failure: still closed.
 	h.recordFailure(now, b)
 	if !h.available(now, b) {
 		t.Fatal("below threshold should remain available")

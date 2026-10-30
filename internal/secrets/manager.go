@@ -17,13 +17,12 @@ const RefScheme = "secret"
 // ErrNotFound indicates no sealed secret exists under the given name.
 var ErrNotFound = errors.New("secrets: not found")
 
-// nameRe constrains secret names to the same shape as credential/keyring names,
-// so a value can be referenced as `secret:<name>` without surprises.
+// nameRe matches the shape used for credential and keyring names, so any valid
+// name can appear in a secret:<name> reference.
 var nameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
-// Manager is the sealed secret store API: it encrypts values with a Keeper and
-// persists only ciphertext via the embedded store. Plaintext is never written to
-// disk or logged. It is the single place that turns a secret name into a value.
+// Manager encrypts secret values with a Keeper and stores only the ciphertext.
+// It is the one place that turns a secret name into a plaintext value.
 type Manager struct {
 	st     *store.Store
 	keeper *Keeper
@@ -51,9 +50,8 @@ func NewManager(st *store.Store, keeper *Keeper, opts ...Option) *Manager {
 	return m
 }
 
-// Set creates or rotates the sealed secret named name with the given plaintext
-// value. Each Set bumps the stored value version. The plaintext is sealed before
-// it ever reaches the store.
+// Set creates or rotates the secret called name. Each call bumps the stored
+// version.
 func (m *Manager) Set(name, value string) error {
 	row, err := m.SealRow(name, value)
 	if err != nil {
@@ -63,10 +61,9 @@ func (m *Manager) Set(name, value string) error {
 	return err
 }
 
-// SealRow validates and seals a value into a store.SecretRow WITHOUT persisting
-// it. It lets a caller write the sealed secret together with another row (e.g. a
-// provider's credential) in a single store transaction. The plaintext never
-// leaves this call; only ciphertext + nonce are returned.
+// SealRow validates and seals a value into a store.SecretRow without storing
+// it, so the caller can write it in the same transaction as another row, such
+// as a provider definition.
 func (m *Manager) SealRow(name, value string) (store.SecretRow, error) {
 	if !nameRe.MatchString(name) {
 		return store.SecretRow{}, fmt.Errorf("secrets: invalid name %q (must match %s)", name, nameRe.String())
@@ -103,8 +100,8 @@ func (m *Manager) Get(name string) (string, error) {
 	return string(pt), nil
 }
 
-// Resolve resolves a "secret:<name>" reference to its plaintext value. It is the
-// resolver the Exterior keyring is wired to for the secret: scheme.
+// Resolve returns the plaintext value for a "secret:<name>" reference. The
+// Exterior Keyring uses it for the secret: scheme.
 func (m *Manager) Resolve(ref string) (string, error) {
 	scheme, name, ok := strings.Cut(ref, ":")
 	if !ok || scheme != RefScheme {
@@ -113,7 +110,7 @@ func (m *Manager) Resolve(ref string) (string, error) {
 	return m.Get(name)
 }
 
-// List returns secret metadata (names, versions, timestamps) — never a value.
+// List returns secret metadata (names, versions, timestamps) but no values.
 func (m *Manager) List() ([]store.SecretMeta, error) {
 	return m.st.ListSecretMeta()
 }

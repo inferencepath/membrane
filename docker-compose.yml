@@ -1,20 +1,20 @@
-# Membrane — single-service, self-hosted deployment. No external database and no
+# Membrane: single-service, self-hosted deployment. No external database and no
 # cloud dependency: the control-plane state lives in an embedded store on a named
 # volume, and the operator UI (Membrane Console) is compiled into the binary.
 #
 #   docker compose up -d          # start (builds the image on first run)
-#   # Console:  http://127.0.0.1:7474   (token = $MEMBRANE_CONSOLE_TOKEN)
+#   # Console:  http://127.0.0.1:8300   (token = $MEMBRANE_CONSOLE_TOKEN)
 #   # Egress:   http://127.0.0.1:8080/v1/chat
 #
 # First run creates an empty, fail-closed store. Configure it one of three ways:
-#   1. Console  → Export / Apply, or the structured editors.
-#   2. CLI      → docker compose exec membrane membrane config apply -f - < bundle.yaml
-#   3. Seed     → uncomment BOTH MEMBRANE_SEED and the seed mount below
+#   1. Console: Export / Apply, or the structured editors.
+#   2. CLI:     docker compose exec membrane membrane config apply -f - < bundle.yaml
+#   3. Seed:    uncomment both MEMBRANE_SEED and the seed mount below
 #                 (applied once, when empty).
 #
 # Secrets are passed by REFERENCE only (env:/file:/vault: in the config/bundle);
 # the values below are the environment those references resolve against. Set them
-# in a .env file or your shell — never commit real secrets.
+# in a .env file or your shell. Never commit real secrets.
 services:
   membrane:
     image: inferencepath/membrane:${MEMBRANE_TAG:-dev}
@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"   # data-plane egress API (/v1/chat)
-      - "7474:7474"   # Membrane Console admin UI (token-protected)
+      - "8300:8300"   # Membrane Console admin UI (token-protected)
     environment:
       # Egress Provider credential(s) that config references (e.g. env:OPENAI_API_KEY).
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

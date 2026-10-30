@@ -6,16 +6,11 @@ import (
 	"github.com/inferencepath/membrane/internal/store"
 )
 
-// This file implements console.ConfigBundle over the store: the declarative
-// export/apply surface (the `deck`-equivalent). Export renders the live store as
-// one canonical bundle; diff validates a candidate and reports the per-kind
-// change set without writing; apply validates (per-kind parsers + the injected
-// cross-kind validator), checks an optimistic whole-bundle version, writes all
-// kinds in one transaction, and triggers the fail-closed, last-good reload.
-// Secrets stay by reference; caller secrets are hashes only.
+// Bundle export, diff and apply. Apply validates the bundle, checks its
+// version, writes every kind in one transaction and then reloads.
 
-// ExportBundle renders the live configuration as one canonical bundle plus its
-// content version token.
+// ExportBundle renders the live configuration as one bundle, with its content
+// version.
 func (a *Adapter) ExportBundle() (console.BundleFile, error) {
 	raw, err := a.st.RenderBundle()
 	if err != nil {
@@ -24,8 +19,8 @@ func (a *Adapter) ExportBundle() (console.BundleFile, error) {
 	return console.BundleFile{Raw: string(raw), Version: store.BundleVersionOf(raw)}, nil
 }
 
-// DiffBundle parses and validates a candidate bundle, then reports the per-kind
-// change set against the live store. No write occurs.
+// DiffBundle validates a candidate bundle and reports which kinds differ from
+// the live store. It does not write.
 func (a *Adapter) DiffBundle(raw []byte) (console.BundleDiff, error) {
 	b, err := store.ParseBundle(raw)
 	if err != nil {
@@ -54,10 +49,9 @@ func (a *Adapter) DiffBundle(raw []byte) (console.BundleDiff, error) {
 	return diff, nil
 }
 
-// ApplyBundle validates a candidate bundle, enforces the optimistic-concurrency
-// version against the live store, writes all four kinds in one transaction, and
-// triggers a reload. On any failure before the write, no change is made; the
-// last-good configuration keeps serving.
+// ApplyBundle validates a candidate bundle, checks version against the live
+// store, writes every kind in one transaction and triggers a reload. If any
+// check fails nothing is written and last-good keeps serving.
 func (a *Adapter) ApplyBundle(raw []byte, version string) console.ApplyResult {
 	b, err := store.ParseBundle(raw)
 	if err != nil {
@@ -80,8 +74,7 @@ func (a *Adapter) ApplyBundle(raw []byte, version string) console.ApplyResult {
 		}
 	}
 
-	// No-op short-circuit: identical bundle leaves live state (and breaker/health)
-	// untouched.
+	// Skip an identical bundle so live health and breaker state are kept.
 	candidate, err := store.RenderBundleDoc(b)
 	if err != nil {
 		return console.ApplyResult{Rejected: true, Reason: err.Error()}
@@ -96,10 +89,8 @@ func (a *Adapter) ApplyBundle(raw []byte, version string) console.ApplyResult {
 	return a.finishReloadBundle()
 }
 
-// validateBundle runs the per-kind daemon parsers over the candidate (so each
-// document is rejected exactly as on single-kind apply) and then the injected
-// cross-kind validator (keyring resolution, per-target adapter build). The
-// cross-kind step is skipped only when no validator was injected.
+// validateBundle runs the per-kind daemon parsers, as single-kind apply does,
+// and then the cross-kind validator if one was set.
 func (a *Adapter) validateBundle(b store.Bundle) error {
 	docs := make(map[string][]byte, len(store.Kinds()))
 	for _, kind := range store.Kinds() {
@@ -124,15 +115,10 @@ func (a *Adapter) validateBundle(b store.Bundle) error {
 	)
 }
 
-// CreatePathway atomically upserts a pathway (routing) together with its
-// permeability policy, writing both kinds in one transaction via the bundle
-// apply path. Pathways and permeability are separate documents linked only by
-// name, and the loader is fail-closed on that link; submitting them together is
-// the only way a new pathway lands in a valid, servable state in one step.
-//
-// It reads the live bundle, upserts the pathway and permeability rows by name
-// (leaving every other kind untouched), re-renders the canonical bundle, and
-// runs the identical validate → atomic write → reload pipeline as ApplyBundle.
+// CreatePathway upserts a pathway and its Permeability policy in one bundle
+// apply. The two are separate documents linked by name, and the loader fails
+// closed if either is missing, so a new pathway is only valid once both are
+// written together. Other kinds are left unchanged.
 func (a *Adapter) CreatePathway(in console.PathwayWizardInput) console.ApplyResult {
 	b, err := a.st.ReadBundle()
 	if err != nil {
@@ -180,15 +166,12 @@ func (a *Adapter) CreatePathway(in console.PathwayWizardInput) console.ApplyResu
 	if err != nil {
 		return console.ApplyResult{Rejected: true, Reason: err.Error()}
 	}
-	// Version "" skips the optimistic check: the bundle was just read here, and
-	// the write is a single-pathway upsert that preserves all other kinds.
+	// The bundle was just read, so skip the version check.
 	return a.ApplyBundle(raw, "")
 }
 
-// CreateCaller upserts a Caller Key by its key id, hashing the plaintext secret
-// to SHA-256 so only the hash is ever stored (never the secret). It writes via
-// the bundle apply path (atomic, single reload) and leaves every other kind
-// untouched. The daemon's own admit parser validates the result on apply.
+// CreateCaller upserts a Caller Key by key ID through a bundle apply. Only the
+// SHA-256 hash of the secret is stored.
 func (a *Adapter) CreateCaller(in console.CallerInput) console.ApplyResult {
 	b, err := a.st.ReadBundle()
 	if err != nil {
@@ -219,8 +202,8 @@ func (a *Adapter) CreateCaller(in console.CallerInput) console.ApplyResult {
 	return a.ApplyBundle(raw, "")
 }
 
-// DeleteCaller removes a Caller Key by its key id via the bundle apply path. It
-// reports whether a caller was removed; deleting an absent key is a no-op.
+// DeleteCaller removes a Caller Key by key ID through a bundle apply and
+// reports whether it existed.
 func (a *Adapter) DeleteCaller(keyID string) (bool, error) {
 	b, err := a.st.ReadBundle()
 	if err != nil {
@@ -250,15 +233,15 @@ func (a *Adapter) DeleteCaller(keyID string) (bool, error) {
 	return true, nil
 }
 
-// errReason wraps a secret-free reason string as an error for the delete path.
+// errReason wraps a rejection reason as an error.
 func errReason(reason string) error { return &applyError{reason: reason} }
 
 type applyError struct{ reason string }
 
 func (e *applyError) Error() string { return e.reason }
 
-// finishReloadBundle triggers the daemon reload after a bundle write and maps
-// its outcome, stamping the new whole-bundle content version.
+// finishReloadBundle runs the daemon reload after a bundle write and maps its
+// outcome, including the new bundle version.
 func (a *Adapter) finishReloadBundle() console.ApplyResult {
 	newVer := ""
 	if raw, err := a.st.RenderBundle(); err == nil {

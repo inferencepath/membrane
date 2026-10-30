@@ -80,7 +80,7 @@ func TestEmbeddingsSuccessNeutral(t *testing.T) {
 	if out.Usage.TotalTokens != 5 {
 		t.Errorf("total tokens = %d", out.Usage.TotalTokens)
 	}
-	// Provider-neutral by default: provider/model must not be disclosed.
+	// Without Reveal, provider and model are not disclosed.
 	if out.Provider != "" || out.Model != "" {
 		t.Errorf("provider/model leaked without reveal: provider=%q model=%q", out.Provider, out.Model)
 	}

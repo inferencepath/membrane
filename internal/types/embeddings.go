@@ -1,13 +1,7 @@
 package types
 
-// This file defines the logical, provider-agnostic `embeddings` API DTOs and the
-// canonical inward representation. As with chat, these are Interior-only shapes:
-// the Caller Key is carried in the request transport (Authorization header),
-// never in the body, and the Reveal flag is an Interior-only control field that
-// never crosses the Membrane.
-
-// EmbeddingsRequest is the inbound logical embeddings request. Input is a string,
-// an array of strings, or an array of token arrays (validated by the handler).
+// EmbeddingsRequest is the inbound embeddings request. Input is a string, an
+// array of strings, or an array of token arrays; the handler validates it.
 type EmbeddingsRequest struct {
 	Pathway string `json:"pathway"`
 	Input   any    `json:"input"`
@@ -15,17 +9,17 @@ type EmbeddingsRequest struct {
 	EncodingFormat string `json:"encoding_format,omitempty"`
 	// Dimensions optionally requests a specific output dimensionality.
 	Dimensions *int `json:"dimensions,omitempty"`
-	// Reveal is the Interior-only opt-in to receive provider/model. It is consumed
-	// on the Interior and MUST NOT cross the Membrane.
+	// Reveal asks for the provider and model in the response. It is consumed on
+	// the Interior and does not cross the Membrane.
 	Reveal bool `json:"reveal,omitempty"`
-	// Targets is the caller-supplied cascade (honored only when the pathway sets
-	// cascade_allowed). Interior-only routing control; never crosses the Membrane.
+	// Targets is the Caller's cascade, honored only when the Pathway sets
+	// cascade_allowed. It does not cross the Membrane.
 	Targets []ChatTarget `json:"targets,omitempty"`
 }
 
-// EmbeddingVector is one input's embedding, carrying its position in input order.
-// Embedding is a float vector ([]float64) by default, or a base64 string when
-// encoding_format=base64; it is passed through from the provider as-is.
+// EmbeddingVector is the embedding for the input at Index. Embedding is a
+// []float64 by default or a base64 string when encoding_format is base64, passed
+// through from the provider unchanged.
 type EmbeddingVector struct {
 	Index     int `json:"index"`
 	Embedding any `json:"embedding"`
@@ -37,9 +31,9 @@ type EmbeddingsUsage struct {
 	TotalTokens  int `json:"total_tokens"`
 }
 
-// CanonicalEmbeddings is the provider-agnostic embeddings result assembled on the
-// inward path. Provider and Model are surfaced to the Caller only when the Reveal
-// flag was set (gated by the inbound Permeability on_reveal set).
+// CanonicalEmbeddings is the embeddings result assembled on the inward path.
+// Provider and Model reach the Caller only when Reveal was set and the inbound
+// Permeability on_reveal set allows them.
 type CanonicalEmbeddings struct {
 	PathwayID PathwayID
 	Data      []EmbeddingVector
@@ -48,8 +42,8 @@ type CanonicalEmbeddings struct {
 	Model     string
 }
 
-// EmbeddingsResponse is the Caller-facing, provider-neutral embeddings response.
-// Provider and Model are populated only when the Caller set the Reveal flag.
+// EmbeddingsResponse is the embeddings response returned to the Caller. Provider
+// and Model are set only when the Caller requested Reveal.
 type EmbeddingsResponse struct {
 	Pathway  string            `json:"pathway"`
 	Data     []EmbeddingVector `json:"data"`

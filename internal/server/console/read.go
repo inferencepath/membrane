@@ -7,10 +7,9 @@ import (
 	"strings"
 )
 
-// statusResponse is the Membrane Console's status payload. It is identity-free
-// and secret-free: it reports process liveness, data-plane readiness (with the
-// secret-free not-ready reason), build metadata, and whether the egress path is
-// enabled (ready == egress enabled).
+// statusResponse is the Console status payload: liveness, data-plane readiness
+// and its reason, build metadata, and whether egress is enabled. It carries no
+// identity or secrets.
 type statusResponse struct {
 	Live          bool    `json:"live"`
 	Ready         bool    `json:"ready"`
@@ -47,8 +46,7 @@ func (c *Console) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleMetrics returns the full identity-free metrics snapshot (requests,
-// tokens, health, failovers, authz decisions, reload outcomes).
+// handleMetrics returns the identity-free metrics snapshot.
 func (c *Console) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "only GET is supported"})

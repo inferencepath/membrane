@@ -9,11 +9,10 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// EmbeddingsTransporter is the embeddings-operation crossing. It is a SEPARATE
-// capability interface from Transporter so that adding
-// an operation never forces chat-only Transporter implementations (or test mocks)
-// to change. Like Transporter it accepts ONLY a scrub.SanitizedRequest, so a
-// non-sanitized request cannot be transported.
+// EmbeddingsTransporter crosses an embeddings request. It is separate from
+// Transporter so that adding an operation does not affect chat-only
+// implementations or test mocks. Like Transporter, it accepts only a
+// scrub.SanitizedRequest.
 type EmbeddingsTransporter interface {
 	TransportEmbeddings(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalEmbeddings, error)
 }

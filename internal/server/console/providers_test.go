@@ -10,8 +10,7 @@ import (
 	"github.com/inferencepath/membrane/internal/server/console"
 )
 
-// stubProviders is a controllable ProviderManager. It records the last (name,
-// value) pair so a test can prove the key value is accepted but never echoed.
+// stubProviders is a ProviderManager that records the last name and value.
 type stubProviders struct {
 	list        console.ProvidersView
 	listErr     error

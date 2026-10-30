@@ -1,13 +1,10 @@
-// Package secrets is the sealed secret store: it encrypts provider credential
-// values (API keys, AWS credentials) with AES-256-GCM and persists only
-// ciphertext in the embedded state store, never plaintext. The AEAD key is
-// derived from an operator-provided master key that lives OUTSIDE the database
-// (env:/file:/vault:), so a stolen database file alone does not reveal secrets.
+// Package secrets is the sealed secret store. Provider credential values are
+// encrypted with AES-256-GCM and only ciphertext is persisted. The AEAD key is
+// derived from a master key kept outside the database (env:, file: or vault:),
+// so a copy of the database file alone does not reveal any secret.
 //
-// This package lets an operator paste a provider secret once (via the Console)
-// and reference it from a credential as `secret:<name>`; applications keep
-// calling Membrane by pathway only and never see a key. Plaintext is never
-// written to disk or logged.
+// A stored value is referenced from configuration as secret:<name>.
+// Plaintext is never written to disk or logged.
 package secrets
 
 import (
@@ -22,33 +19,29 @@ import (
 )
 
 const (
-	// minMasterKeyLen is the minimum accepted master key material length in bytes.
+	// minMasterKeyLen is the minimum master key length in bytes.
 	minMasterKeyLen = 16
 	// dataKeyLen is the derived AES-256 key length in bytes.
 	dataKeyLen = 32
-	// hkdfInfo domain-separates the derived data key from any other use of the
-	// same master key material.
+	// hkdfInfo separates the data key from any other use of the master key.
 	hkdfInfo = "membrane/secrets/aes-256-gcm/v1"
 )
 
-// hkdfSalt is a fixed, non-secret salt for HKDF. A constant salt is acceptable:
-// an HKDF salt need not be secret, and here it only domain-separates this
-// derivation.
+// hkdfSalt is a fixed salt. HKDF salts need not be secret; this one only
+// separates this derivation from others.
 var hkdfSalt = []byte("membrane-sealed-secret-store")
 
-// Keeper seals and opens secret values with AES-256-GCM. The AEAD key is derived
-// from the operator-provided master key material via HKDF-SHA256, so the raw
-// master key is never used directly as the cipher key. A Keeper is safe for
-// concurrent use.
+// Keeper seals and opens secret values with AES-256-GCM, using a key derived
+// from the master key with HKDF-SHA256. The raw master key is never used as
+// the cipher key. A Keeper is safe for concurrent use.
 type Keeper struct {
 	aead       cipher.AEAD
 	keyVersion int
 }
 
-// NewKeeper derives an AES-256-GCM AEAD from master key material and tags it with
-// keyVersion (recorded alongside each sealed value so a future master-key
-// rotation can re-wrap older ciphertexts). It fails closed on short key material
-// or an invalid key version.
+// NewKeeper derives an AES-256-GCM AEAD from masterKey. keyVersion is stored
+// with each sealed value so a later master key rotation can re-wrap older
+// ciphertexts. It fails closed on short key material or a version below 1.
 func NewKeeper(masterKey []byte, keyVersion int) (*Keeper, error) {
 	if len(masterKey) < minMasterKeyLen {
 		return nil, fmt.Errorf("secrets: master key too short (%d bytes; need >= %d)", len(masterKey), minMasterKeyLen)
@@ -75,9 +68,8 @@ func NewKeeper(masterKey []byte, keyVersion int) (*Keeper, error) {
 // Keeper.
 func (k *Keeper) KeyVersion() int { return k.keyVersion }
 
-// Seal encrypts plaintext and returns the ciphertext and the random nonce used.
-// Each call uses a fresh random nonce, so sealing the same value twice yields
-// distinct ciphertexts.
+// Seal encrypts plaintext under a fresh random nonce and returns the
+// ciphertext and the nonce.
 func (k *Keeper) Seal(plaintext []byte) (ciphertext, nonce []byte, err error) {
 	nonce = make([]byte, k.aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -87,9 +79,9 @@ func (k *Keeper) Seal(plaintext []byte) (ciphertext, nonce []byte, err error) {
 	return ciphertext, nonce, nil
 }
 
-// Open decrypts a ciphertext/nonce pair produced by Seal. A wrong key or tampered
-// input fails GCM authentication, so a corrupted or mis-keyed value never yields
-// a plausible-but-wrong secret. The returned error is deliberately value-free.
+// Open decrypts a ciphertext and nonce produced by Seal. A wrong key or
+// tampered input fails GCM authentication rather than returning a wrong value.
+// The error never includes the value.
 func (k *Keeper) Open(ciphertext, nonce []byte) ([]byte, error) {
 	if len(nonce) != k.aead.NonceSize() {
 		return nil, fmt.Errorf("secrets: invalid nonce size %d (want %d)", len(nonce), k.aead.NonceSize())

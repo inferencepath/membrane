@@ -14,7 +14,7 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
-// assertNoIdentityLeak fails if any caller-identity header crossed to the provider.
+// assertNoIdentityLeak fails if any Caller identity header reached the Provider.
 func assertNoIdentityLeak(t *testing.T, r *http.Request) {
 	t.Helper()
 	if r.Header.Get("Authorization") != "" {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# cover-check.sh — enforce coverage thresholds.
+# cover-check.sh: enforce coverage thresholds.
 #
 #   * Overall statement coverage must be >= OVERALL_MIN (default 90%).
 #   * Critical packages (the Membrane and the boundary types) must be at

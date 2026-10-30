@@ -1,7 +1,6 @@
-// Package types defines the shared, behavior-free type contracts used across
-// InferencePath's trust zones (Interior, Membrane, Exterior).
+// Package types defines the shared type contracts used across InferencePath's
+// trust zones (Interior, Membrane, Exterior). It contains no logic.
 //
-// It deliberately contains no logic: it is the vocabulary other packages depend
-// on. Identity-bearing types defined here are Interior-only and must never be
-// embedded into Exterior-facing types.
+// Identity-bearing types here are Interior-only and must not be embedded in
+// Exterior-facing types.
 package types

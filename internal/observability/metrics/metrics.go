@@ -1,15 +1,14 @@
-// Package metrics provides identity-free, Pathway-keyed observability for the
-// egress path. Per-request metrics are labelled ONLY by the logical Pathway
-// (plus the stream flag and a coarse outcome) — never by caller/org identity or
-// the Caller Key.
+// Package metrics provides identity-free, Pathway-keyed metrics for the egress
+// path. Per-request metrics are labelled by the logical Pathway, the stream
+// flag, and a coarse outcome, never by caller or org identity or the Caller
+// Key.
 //
-// Operational resilience metrics (failover count, target health) additionally
-// carry a coarse Exterior Provider-FAMILY label (e.g. "openai", "anthropic").
-// This is NOT caller/org identity and never crosses the Membrane to a Provider;
-// it is Membrane-local operator telemetry, so it upholds the Caller-anonymity
-// invariant while letting operators see which family is degrading.
+// Resilience metrics (failover count, target health) also carry a coarse
+// Provider family label such as "openai" or "anthropic". That label is not a
+// caller identity and stays in Membrane-local operator telemetry, so Callers
+// remain anonymous while operators can see which family is degrading.
 //
-// The exposition is Prometheus text format (version 0.0.4) and the package has no
+// The exposition is Prometheus text format, version 0.0.4. The package has no
 // third-party dependencies.
 package metrics
 
@@ -35,38 +34,42 @@ const (
 	OutcomeUpstreamError Outcome = "upstream_error"
 	// OutcomeInternalError is a Membrane-side failure (500 to the Caller).
 	OutcomeInternalError Outcome = "internal_error"
+	// OutcomeFailedClosed is a request blocked by an Interior content stage that
+	// failed closed before anything crossed the Membrane.
+	OutcomeFailedClosed Outcome = "failed_closed"
 )
 
-// Recorder records Pathway-keyed request metrics. Implementations MUST NOT
-// accept or store any caller/org identity or Caller Key.
+// Recorder records Pathway-keyed request metrics. Implementations must not
+// accept or store caller or org identity or a Caller Key.
 type Recorder interface {
-	// RecordChat records one chat request. Token counts are 0 when unknown
-	// (e.g. streaming responses that do not report usage).
+	// RecordChat records one chat request. Token counts are 0 when unknown,
+	// for example on streaming responses that do not report usage.
 	RecordChat(pathway string, stream bool, outcome Outcome, latency time.Duration, promptTokens, completionTokens, totalTokens int)
 }
 
 // Observer receives identity-free resilience signals from the Membrane. The
-// provider argument is an Exterior Provider FAMILY label only (never caller
-// identity); it never leaves Membrane.
+// provider argument is a Provider family label, never a caller identity, and
+// it does not leave the Membrane.
 type Observer interface {
 	// ObserveFailover records that a request failed over away from one target.
 	ObserveFailover(pathway, provider string)
-	// ObserveHealth records a target's last-known health (true = healthy).
+	// ObserveHealth records a target's last-known health.
 	ObserveHealth(pathway, provider string, healthy bool)
 }
 
-// AuthzObserver records identity-free authorization decisions, keyed by the
-// logical Pathway and a coarse allow/deny decision (never the Caller).
+// AuthzObserver records authorization decisions keyed by Pathway and an allow
+// or deny decision, never by Caller.
 type AuthzObserver interface {
 	ObserveAuthorization(pathway string, allowed bool)
 }
 
-// ReloadObserver records config-reload outcomes (applied/rejected/unchanged).
+// ReloadObserver records config reload outcomes such as applied, rejected, or
+// unchanged.
 type ReloadObserver interface {
 	ObserveReload(result string)
 }
 
-// Nop is a Recorder/Observer that discards everything. Useful as a safe default.
+// Nop implements every recorder and observer interface and discards all input.
 type Nop struct{}
 
 // RecordChat implements Recorder.
@@ -105,20 +108,20 @@ type tokenStat struct {
 	total      uint64
 }
 
-// capProvider keys a resilience series by Pathway + Exterior provider family.
+// capProvider keys a resilience series by Pathway and Provider family.
 type capProvider struct {
 	pathway  string
 	provider string
 }
 
-// Registry is a concurrency-safe, in-process Recorder/Observer with Prometheus
-// exposition.
-// authzKey keys an authorization-decision series by Pathway + decision.
+// authzKey keys an authorization series by Pathway and decision.
 type authzKey struct {
 	pathway  string
-	decision string // "allow" | "deny"
+	decision string // "allow" or "deny"
 }
 
+// Registry is an in-process, concurrency-safe implementation of the recorder
+// and observer interfaces with Prometheus exposition.
 type Registry struct {
 	mu        sync.Mutex
 	reqs      map[labelSet]*reqStat
@@ -227,37 +230,39 @@ type TokenSeries struct {
 	Total      uint64 `json:"total"`
 }
 
-// TargetHealth is the last-known health of one Pathway × provider-family target.
+// TargetHealth is the last-known health of one target, identified by Pathway
+// and Provider family.
 type TargetHealth struct {
 	Pathway  string `json:"pathway"`
 	Provider string `json:"provider"`
 	Healthy  bool   `json:"healthy"`
 }
 
-// FailoverSeries counts failovers away from one Pathway × provider-family target.
+// FailoverSeries counts failovers away from one target, identified by Pathway
+// and Provider family.
 type FailoverSeries struct {
 	Pathway  string `json:"pathway"`
 	Provider string `json:"provider"`
 	Count    uint64 `json:"count"`
 }
 
-// AuthzSeries counts authorization decisions for one Pathway × decision.
+// AuthzSeries counts authorization decisions for one Pathway and decision.
 type AuthzSeries struct {
 	Pathway  string `json:"pathway"`
 	Decision string `json:"decision"`
 	Count    uint64 `json:"count"`
 }
 
-// ReloadSeries counts config-reload outcomes by result.
+// ReloadSeries counts config reload outcomes by result.
 type ReloadSeries struct {
 	Result string `json:"result"`
 	Count  uint64 `json:"count"`
 }
 
-// Snapshot is a point-in-time, identity-free view of the Registry for the
-// Membrane Console's read endpoints. It carries ONLY Pathway and coarse
-// provider-FAMILY labels — never caller/org identity or any secret. The series
-// are returned in the same stable order as the Prometheus exposition.
+// Snapshot is a point-in-time view of the Registry for the Membrane Console's
+// read endpoints. It carries only Pathway and Provider family labels, never
+// caller or org identity or secrets. Series appear in the same order as the
+// Prometheus exposition.
 type Snapshot struct {
 	Requests  []RequestSeries  `json:"requests"`
 	Tokens    []TokenSeries    `json:"tokens"`
@@ -267,7 +272,7 @@ type Snapshot struct {
 	Reloads   []ReloadSeries   `json:"reloads"`
 }
 
-// Snapshot returns a stable, identity-free copy of the current counters/gauges.
+// Snapshot returns a sorted copy of the current counters and gauges.
 func (r *Registry) Snapshot() Snapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -458,8 +463,7 @@ func (r *Registry) WriteProm(w io.Writer) {
 	}
 }
 
-// sortedCapProviders returns the keys of a capProvider-keyed map in a stable
-// (pathway, provider) order for deterministic exposition.
+// sortedCapProviders returns the keys of m sorted by pathway, then provider.
 func sortedCapProviders[V any](m map[capProvider]V) []capProvider {
 	keys := make([]capProvider, 0, len(m))
 	for k := range m {

@@ -1,13 +1,10 @@
 package console
 
-// This file defines the console's read-only configuration VIEW types and the
-// ConfigSource port. The types are deliberately identity-free and secret-free:
-// credentials appear only as references (never values), callers as public ids +
-// allowlists (never secrets), and routing as server-side topology the operator
-// is allowed to see. Keeping these types (and the port) in the console package
-// means the console imports no Interior/Membrane/Exterior package — the concrete
-// ConfigSource is implemented elsewhere (internal/consoleview) and injected,
-// preserving the console's structural isolation from the egress path.
+// The read-only config view types carry no identity and no secrets:
+// credentials appear as references, callers as public IDs and allowlists, and
+// routing as the server-side topology an operator may see. They and the
+// ConfigSource port live here so the console imports no Interior, Membrane, or
+// Exterior package; internal/consoleview implements the port.
 
 // ServerView is the server/audit/console settings view.
 type ServerView struct {
@@ -18,9 +15,9 @@ type ServerView struct {
 	ConsoleEnabled  bool   `json:"consoleEnabled"`
 	ConsoleAddress  string `json:"consoleAddress"`
 	ConsoleAuth     bool   `json:"consoleAuth"`
-	// Mode is the config source: "managed" (embedded store) — the operating
-	// model exposed to operators. DataDir is the managed state directory.
-	// EditingEnabled reports whether live edits are available.
+	// Mode is the config source, "managed" for the embedded store. DataDir is
+	// the managed state directory. EditingEnabled reports whether live edits
+	// are available.
 	Mode           string `json:"mode,omitempty"`
 	DataDir        string `json:"dataDir,omitempty"`
 	EditingEnabled bool   `json:"editingEnabled"`
@@ -55,8 +52,8 @@ type PathwaysView struct {
 	Pathways []PathwayView `json:"pathways"`
 }
 
-// CredentialView is a named credential as a REFERENCE (never a value), plus
-// whether that reference currently resolves. The plaintext secret is never here.
+// CredentialView is a named credential reference and whether it currently
+// resolves. It never holds the secret value.
 type CredentialView struct {
 	Name      string `json:"name"`
 	Scheme    string `json:"scheme"`    // env | file | vault
@@ -70,7 +67,7 @@ type CredentialsView struct {
 	Credentials []CredentialView `json:"credentials"`
 }
 
-// CallerView is a Caller Key's public id + allowlist (no secret, no hash).
+// CallerView is a Caller Key's public ID and allowlist, without secret or hash.
 type CallerView struct {
 	KeyID    string   `json:"keyId"`
 	CallerID string   `json:"callerId"`
@@ -91,9 +88,9 @@ type DirectionView struct {
 	InboundOnReveal []string `json:"inboundOnReveal,omitempty"`
 }
 
-// PermeabilityView is the Membrane's allowlist spec (the source of truth).
-// OutboundDenylist is the read-only, hard-coded set of fields that may never be
-// allowlisted outbound (identity/control fields); it is informational only.
+// PermeabilityView is the Membrane's allowlist spec. OutboundDenylist lists the
+// hard-coded identity and control fields that can never be allowed outbound; it
+// is informational.
 type PermeabilityView struct {
 	Version          int             `json:"version"`
 	Pathways         []DirectionView `json:"pathways"`
@@ -101,9 +98,9 @@ type PermeabilityView struct {
 }
 
 // ConfigSource provides read-only, identity-free views of the active
-// configuration. Implementations read the config files (or the active snapshot)
-// and MUST NOT expose any secret value. A nil ConfigSource disables the config
-// read endpoints (they return 503).
+// configuration. Implementations read the config files or the active snapshot
+// and must not expose secret values. A nil ConfigSource makes the config read
+// endpoints return 503.
 type ConfigSource interface {
 	Server() ServerView
 	Pathways() (PathwaysView, error)

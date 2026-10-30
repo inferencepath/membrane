@@ -1,7 +1,7 @@
-// Package moderations implements the logical /v1/moderations handler: Admit →
-// Authorize → Resolve (operation-gated) → Scrub → Transporter (+ Egress Identity)
-// → inward Scrub. Like the chat handler, no endpoint here accepts or emits
-// provider endpoints, credentials, or caller identity on the egress side.
+// Package moderations implements the logical /v1/moderations handler: Admit,
+// Authorize, Resolve, Scrub, Transporter with Egress Identity, then the inward
+// Scrub. No provider endpoint, credential, or caller identity crosses to the
+// egress side.
 package moderations
 
 import (
@@ -49,7 +49,7 @@ type Handler struct {
 	now     func() time.Time
 }
 
-// HandlerOption configures process-level Handler dependencies (not per-config).
+// HandlerOption configures a Handler's process-level dependencies.
 type HandlerOption func(*Handler)
 
 // WithAudit installs the Interior-only usage audit Sink.
@@ -61,7 +61,7 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithClock overrides the audit timestamp clock (for deterministic tests).
+// WithClock overrides the audit timestamp clock, for tests.
 func WithClock(now func() time.Time) HandlerOption {
 	return func(h *Handler) {
 		if now != nil {
@@ -251,7 +251,7 @@ func bearerToken(header string) (string, bool) {
 	return token, true
 }
 
-// --- provider-neutral error mapping (mirrors the chat handler) ---
+// Provider-neutral error mapping, as in the chat handler.
 
 type neutralError struct {
 	status  int

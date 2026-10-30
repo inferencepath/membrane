@@ -5,26 +5,19 @@ import (
 	"net/http"
 )
 
-// This file implements the console's sealed-secret endpoints over the
-// SecretManager port (defined in secrets_views.go). Values are write-only: an
-// operator may set/rotate or delete a secret, but no handler ever returns a
-// plaintext value — reads surface metadata only.
-
-// secretsGuard enforces an available SecretManager. A nil manager means the
-// sealed store is disabled (no master key configured), so secret management from
-// the Console is unavailable and every secrets endpoint returns 503.
+// secretsGuard returns the SecretManager, or writes 503 and returns false when
+// the sealed store is disabled.
 func (c *Console) secretsGuard(w http.ResponseWriter) (SecretManager, bool) {
 	if c.cfg.Secrets == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "secret management is not available (set secrets.master_key_ref)",
+			"error": "sealed secret store is not available (set secrets.master_key_ref)",
 		})
 		return nil, false
 	}
 	return c.cfg.Secrets, true
 }
 
-// handleSecretsList serves sealed-secret metadata (names, versions, timestamps,
-// and whether a credential references each). It never returns a value.
+// handleSecretsList serves sealed-secret metadata (never a value).
 func (c *Console) handleSecretsList(w http.ResponseWriter, _ *http.Request) {
 	mgr, ok := c.secretsGuard(w)
 	if !ok {
@@ -41,39 +34,39 @@ func (c *Console) handleSecretsList(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// secretSetInput is the write-only body for setting/rotating a secret value.
-type secretSetInput struct {
+// secretSetBody holds the plaintext value to seal. It is never echoed back.
+type secretSetBody struct {
 	Value string `json:"value"`
 }
 
-// handleSecretSet creates or rotates the sealed secret named by the path. The
-// value is accepted but never echoed; the response is secret-free.
+// handleSecretSet creates or rotates a sealed secret. The name comes from the
+// path and the value from the size-capped JSON body.
 func (c *Console) handleSecretSet(w http.ResponseWriter, r *http.Request) {
 	mgr, ok := c.secretsGuard(w)
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	raw, ok := readEditBody(w, r)
 	if !ok {
 		return
 	}
-	var body secretSetInput
+	var body secretSetBody
 	if err := json.Unmarshal(raw, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed request body"})
 		return
 	}
-	name := r.PathValue("name")
 	if err := mgr.Set(name, body.Value); err != nil {
 		c.recordAdmin(r, "secrets:set:"+name, "rejected")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	c.recordAdmin(r, "secrets:set:"+name, "applied")
-	writeJSON(w, http.StatusOK, map[string]any{"set": true, "name": name})
+	writeJSON(w, http.StatusOK, map[string]any{"applied": true, "name": name})
 }
 
 // handleSecretDelete removes a sealed secret. A secret still referenced by a
-// credential is refused (409) so a credential's `secret:<name>` never dangles.
+// credential is refused with 409.
 func (c *Console) handleSecretDelete(w http.ResponseWriter, r *http.Request) {
 	mgr, ok := c.secretsGuard(w)
 	if !ok {

@@ -2,31 +2,22 @@ package store
 
 import "database/sql"
 
-// This file is the atomic "provider" write path used by the Console's Providers
-// screen. A provider pairs a sealed secret value with the provider definition
-// (family + connection facts + the `secret:<name>` reference that points at the
-// sealed value). Both land in a SINGLE transaction so an operator never observes
-// a provider row that references a not-yet-sealed value (or a sealed value with
-// no provider). The store still stores ciphertext only — sealing happens in
-// internal/secrets before the row reaches here.
+// A provider definition and its sealed secret are written in one transaction,
+// so a provider never references a secret that has not been stored yet.
 
-// ProviderUpsert carries the two rows written atomically for one provider: the
-// sealed SecretRow (ciphertext + nonce, never plaintext) and the ProviderRow
-// that references it. The caller guarantees Provider.SecretRef is
-// "secret:<Secret.Name>".
+// ProviderUpsert holds the two rows written together for one provider: the
+// sealed SecretRow and the ProviderRow that references it. The caller sets
+// Provider.SecretRef to "secret:<Secret.Name>".
 type ProviderUpsert struct {
 	Secret   SecretRow
 	Provider ProviderRow
 }
 
-// UpsertProvider seals-in a provider: it upserts the sealed secret (version bump)
-// and the provider definition in one transaction. A failure leaves the store
-// exactly as it was.
+// UpsertProvider upserts the sealed secret, bumping its version, and the
+// provider definition in one transaction.
 func (s *Store) UpsertProvider(p ProviderUpsert) error {
 	return s.inTx(func(tx *sql.Tx) error {
-		// Ambient-auth providers (aws_default_chain / aws_assume_role /
-		// azure_managed_identity) carry no sealed value; only seal when a secret
-		// is present (api_key auth).
+		// Providers using ambient auth have no sealed secret.
 		if p.Secret.Name != "" {
 			if _, err := putSecretTx(tx, p.Secret); err != nil {
 				return err
@@ -36,10 +27,8 @@ func (s *Store) UpsertProvider(p ProviderUpsert) error {
 	})
 }
 
-// upsertProviderTx inserts or updates a single provider definition by name,
-// within an existing transaction. Unlike writeProvidersTx (replace-all), this is
-// a targeted merge used by the Console provider path so other providers are left
-// untouched.
+// upsertProviderTx inserts or updates one provider by name. Unlike
+// writeProvidersTx, it leaves other providers untouched.
 func upsertProviderTx(tx *sql.Tx, p ProviderRow) error {
 	_, err := tx.Exec(
 		`INSERT INTO providers
@@ -64,10 +53,9 @@ func upsertProviderTx(tx *sql.Tx, p ProviderRow) error {
 	return err
 }
 
-// DeleteProvider removes a provider's definition and its sealed secret in one
-// transaction, reporting whether anything was removed. It does NOT check for
-// dangling target references; callers (the adapter) refuse the delete first when
-// a pathway target still references the provider, so routing never dangles.
+// DeleteProvider removes a provider and its sealed secret in one transaction
+// and reports whether a provider was removed. It does not check whether a
+// pathway still references the provider; callers must do that first.
 func (s *Store) DeleteProvider(name string) (bool, error) {
 	var removed bool
 	err := s.inTx(func(tx *sql.Tx) error {

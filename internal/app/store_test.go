@@ -60,9 +60,8 @@ func TestBuildSnapshotFromStoreValid(t *testing.T) {
 func TestBuildSnapshotRejectsUnsupportedOperation(t *testing.T) {
 	t.Setenv("TEST_STORE_KEY", "secret-value")
 	s := newStore(t, true)
-	// Anthropic does not support embeddings (per the capability matrix). Wire a
-	// chat pathway's provider to anthropic AND set the pathway operation to
-	// embeddings — assembly must fail closed.
+	// Anthropic does not support embeddings, so an embeddings Pathway bound to
+	// it must fail assembly.
 	exec := func(q string, args ...any) {
 		if _, err := s.DB().Exec(q, args...); err != nil {
 			t.Fatalf("seed %q: %v", q, err)
@@ -89,8 +88,8 @@ func TestBuildSnapshotRejectsVocabularyMismatch(t *testing.T) {
 			t.Fatalf("seed %q: %v", q, err)
 		}
 	}
-	// Operation embeddings but the permeability policy still lists chat's
-	// `messages` field → fail closed at assembly (openai supports embeddings).
+	// An embeddings Pathway whose policy still lists chat's messages field
+	// fails assembly, even though openai supports embeddings.
 	exec(`UPDATE pathways SET operation = 'embeddings' WHERE name = 'chat'`)
 	_, _, err := app.BuildSnapshotFromStore(s, nil)
 	if err == nil || !strings.Contains(err.Error(), "not valid for this operation") {
@@ -124,7 +123,7 @@ func TestValidateSpecs(t *testing.T) {
 	t.Setenv("TEST_STORE_KEY", "secret-value")
 	s := newStore(t, true)
 
-	// Render the live store's canonical docs and validate them — the happy path.
+	// The store's rendered documents validate.
 	perm, _ := s.RenderPermeability()
 	callers, _ := s.RenderCallers()
 	creds, _ := s.RenderCredentials()
@@ -134,7 +133,7 @@ func TestValidateSpecs(t *testing.T) {
 		t.Fatalf("expected valid specs, got %v", err)
 	}
 
-	// Each kind's parse/assembly failure must surface a kind-prefixed error.
+	// A parse failure is prefixed with the document kind.
 	cases := []struct {
 		name                             string
 		perm, callers, creds, prov, caps []byte
@@ -153,23 +152,20 @@ func TestValidateSpecs(t *testing.T) {
 		}
 	}
 
-	// Cross-kind failure: a pathway referencing an unknown provider passes
-	// per-kind parses but fails assembly.
+	// A Pathway naming an unknown provider parses but fails assembly.
 	badCaps := strings.Replace(string(caps), "provider: main", "provider: ghost", 1)
 	if err := app.ValidateSpecs(perm, callers, creds, prov, []byte(badCaps)); err == nil {
 		t.Fatal("expected cross-kind assembly failure for dangling provider ref")
 	}
 
-	// Cross-kind failure: a pathway with no Permeability policy must be rejected
-	// at load (not silently loaded then failing per-request at the Scrub).
+	// A Pathway with no Permeability policy is rejected at load.
 	emptyPerm := []byte("version: 1\npathways:\n  other:\n    outbound:\n      allow: [messages]\n    inbound:\n      default: [message]\n")
 	err := app.ValidateSpecs(emptyPerm, callers, creds, prov, caps)
 	if err == nil || !strings.Contains(err.Error(), "no permeability policy") {
 		t.Fatalf("expected 'no permeability policy' error, got %v", err)
 	}
 
-	// Cross-kind failure: a Permeability entry naming a pathway that is not
-	// configured must be rejected (dead config / typo).
+	// A Permeability entry for an unconfigured Pathway is rejected.
 	extraPerm := []byte("version: 1\npathways:\n  chat:\n    outbound:\n      allow: [messages]\n    inbound:\n      default: [message]\n  ghostcap:\n    outbound:\n      allow: [messages]\n    inbound:\n      default: [message]\n")
 	err = app.ValidateSpecs(extraPerm, callers, creds, prov, caps)
 	if err == nil || !strings.Contains(err.Error(), "unknown pathway") {
@@ -189,12 +185,12 @@ func TestStoreManagerReloadLifecycle(t *testing.T) {
 		t.Fatal("Current() is nil after construction")
 	}
 
-	// No change → Unchanged (content hash identical).
+	// Same content hash, so the reload is Unchanged.
 	if r := mgr.Reload(); !r.Unchanged {
 		t.Fatalf("expected Unchanged, got %+v", r)
 	}
 
-	// Add a second pathway+target → Applied.
+	// Adding a second Pathway and target is Applied.
 	exec := func(q string) {
 		if _, err := s.DB().Exec(q); err != nil {
 			t.Fatalf("mutate: %v", err)
@@ -234,13 +230,13 @@ func TestStoreManagerObserverAndWatch(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 
-	// Drive one reload via Watch, then stop it by cancelling the context.
+	// Trigger one reload through Watch, then cancel it.
 	ctx, cancel := context.WithCancel(context.Background())
 	trigger := make(chan struct{}, 1)
 	done := make(chan struct{})
 	go func() { mgr.Watch(ctx, trigger); close(done) }()
 
-	// Mutate so the triggered reload is Applied (not Unchanged).
+	// Change the store so the reload is Applied rather than Unchanged.
 	if _, err := s.DB().Exec(`UPDATE pathways SET cascade_allowed = 1 WHERE name = 'chat'`); err != nil {
 		t.Fatalf("mutate: %v", err)
 	}

@@ -1,8 +1,6 @@
-// Package factory constructs a concrete Provider adapter for a configured
-// target. It lives in the Exterior zone and is the single place that maps a
-// Provider family to its adapter, so wiring (and tests) stay DRY. It never sees
-// Caller identity or credentials; credentials are resolved separately by the
-// Keyring and attached at/after the Membrane.
+// Package factory builds the Provider adapter for a configured target. It is
+// the one place that maps a Provider family to its adapter. It never sees Caller
+// identity or credentials; the Keyring resolves credentials separately.
 package factory
 
 import (
@@ -34,11 +32,9 @@ const azureTokenScope = "https://cognitiveservices.azure.com/.default"
 // gcpCloudPlatformScope is the OAuth scope for Vertex AI (and other GCP APIs).
 const gcpCloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
-// Families returns the set of Provider families this factory can Build, as the
-// stable family strings used in configuration. It is the single source of truth
-// for "which families exist", so verification suites (e.g. the Diffusion-leak
-// coverage guard) can enumerate the registry and fail CI when a new family is
-// added without leak coverage.
+// Families returns the Provider families Build supports, as the family strings
+// used in configuration. Tests enumerate it to check that every family has
+// coverage.
 func Families() []string {
 	return []string{
 		string(config.ProviderOpenAI),
@@ -119,11 +115,11 @@ func bedrockOptions(t config.TargetConfig) ([]bedrock.Option, error) {
 	}
 }
 
-// geminiOptions builds the Gemini adapter's auth/surface options. api_key (the
-// default) is AI Studio and needs no option; gcp_application_default is the
-// Vertex AI surface — it selects the project/location endpoint and attaches an
-// ambient OAuth bearer source (ADC). The token source is resolved lazily on first
-// use so Build performs no credential discovery or network I/O.
+// geminiOptions builds the Gemini adapter's auth options. api_key (the default)
+// targets AI Studio and needs no option. gcp_application_default targets Vertex
+// AI: it selects the project and location endpoint and attaches an Application
+// Default Credentials token source. The token source is created on first use, so
+// Build does no credential discovery or network I/O.
 func geminiOptions(t config.TargetConfig) ([]gemini.Option, error) {
 	switch t.AuthMode {
 	case "", config.AuthAPIKey:
@@ -155,7 +151,8 @@ func geminiOptions(t config.TargetConfig) ([]gemini.Option, error) {
 
 // azureOptions builds the Azure OpenAI adapter's auth options. api_key uses the
 // keyring-resolved static key; azure_managed_identity attaches an Entra token
-// source (DefaultAzureCredential: managed identity, workload identity, env, …).
+// source backed by DefaultAzureCredential (managed identity, workload identity,
+// environment, and so on).
 func azureOptions(t config.TargetConfig) ([]azureopenai.Option, error) {
 	switch t.AuthMode {
 	case "", config.AuthAPIKey:

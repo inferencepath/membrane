@@ -31,12 +31,12 @@ func TestAuthorizeDeniedNotAllowed(t *testing.T) {
 }
 
 func TestAuthorizeDenyByDefault(t *testing.T) {
-	// Empty policy for the caller => authorized for nothing.
+	// A caller with an empty policy is authorized for nothing.
 	a := authorize.New(stubPolicy{"acme": {}})
 	if err := a.Authorize(types.Caller{ID: "acme"}, "chat"); !errors.Is(err, authorize.ErrForbidden) {
 		t.Fatalf("empty allowlist must deny, got %v", err)
 	}
-	// Unknown caller => denied.
+	// An unknown caller is denied.
 	if err := a.Authorize(types.Caller{ID: "ghost"}, "chat"); !errors.Is(err, authorize.ErrForbidden) {
 		t.Fatalf("unknown caller must deny, got %v", err)
 	}

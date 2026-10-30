@@ -1,7 +1,7 @@
-// Package anthropic implements an Anthropic Messages API Provider adapter. It
-// builds its request ONLY from a neutral providers.Request plus the injected
-// EgressIdentity — it has no access to Caller identity, the Caller Key, or the
-// Reveal flag. The Egress Identity is attached as the x-api-key header.
+// Package anthropic implements a Provider adapter for the Anthropic Messages
+// API. Requests are built only from a providers.Request and the EgressIdentity,
+// which is sent as the x-api-key header. The adapter has no access to Caller
+// identity, the Caller Key, or the Reveal flag.
 package anthropic
 
 import (
@@ -21,7 +21,7 @@ import (
 
 const (
 	messagesPath = "/v1/messages"
-	// apiVersion pins the Anthropic API version. Not caller identity.
+	// apiVersion pins the Anthropic API version.
 	apiVersion = "2023-06-01"
 	// defaultMaxTokens is applied when the allowlisted payload omits max_tokens,
 	// which the Messages API requires.
@@ -39,8 +39,8 @@ type Adapter struct {
 }
 
 // New returns an Anthropic adapter for the given base URL. idleTimeout bounds
-// inactivity on streaming responses (defaulted if <= 0). The reported ID is
-// "anthropic", which is what the Membrane may surface to the Caller on Reveal.
+// inactivity on streaming responses; a value <= 0 selects the default. The
+// reported ID is "anthropic".
 func New(baseURL string, idleTimeout time.Duration) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
@@ -61,8 +61,8 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 	for k, v := range req.Payload {
 		body[k] = v
 	}
-	// The Messages API requires model and max_tokens. The outbound Scrub does not
-	// inject model; it is applied here from the resolved target.
+	// The Messages API requires model and max_tokens. The Scrub does not set
+	// model, so it comes from the resolved target here.
 	body["model"] = req.Model
 	if _, ok := body["max_tokens"]; !ok {
 		body["max_tokens"] = defaultMaxTokens
@@ -72,10 +72,9 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 	} else {
 		delete(body, "stream")
 	}
-	// Lift system-role turns to the top-level "system" field (the Messages API
-	// rejects a "system" role inside messages) and rebuild the message list into
-	// the Anthropic shape (tool_use / tool_result content blocks). A system-free,
-	// tool-free conversation is rebuilt byte-for-byte identically.
+	// The Messages API rejects a "system" role inside messages, so system turns
+	// move to the top-level "system" field. Tool calls and results become
+	// tool_use and tool_result blocks.
 	if raw, ok := body["messages"].([]any); ok {
 		system, messages := anthropicMessages(raw)
 		body["messages"] = messages
@@ -83,7 +82,7 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 			body["system"] = system
 		}
 	}
-	// Neutral → Anthropic tool schema (tools + tool_choice). No-ops when absent.
+	// Map tools and tool_choice to the Anthropic schema.
 	if raw, ok := body["tools"]; ok {
 		body["tools"] = anthropicTools(raw)
 	}
@@ -100,8 +99,8 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 // anthropicMessages lifts system turns to a top-level system string and rebuilds
 // the remaining turns into the Anthropic shape: assistant tool_calls become
 // tool_use content blocks, and a neutral tool-result turn (role "tool") becomes a
-// user turn with a tool_result block. Plain text turns are reduced to {role,
-// content} so a non-tool conversation serializes exactly as before.
+// user turn with a tool_result block. Plain turns are reduced to role and
+// content.
 func anthropicMessages(arr []any) (system string, messages []any) {
 	var sys strings.Builder
 	out := make([]any, 0, len(arr))
@@ -188,7 +187,8 @@ func anthropicTools(raw any) any {
 }
 
 // anthropicToolChoice maps the neutral (OpenAI-style) tool_choice directive into
-// the Anthropic tool_choice shape. "none"/unknown yields nil (model default).
+// the Anthropic tool_choice shape. "none" and unknown values return nil, which
+// leaves the model default.
 func anthropicToolChoice(raw any) map[string]any {
 	var v any
 	switch r := raw.(type) {
@@ -226,8 +226,8 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	if err != nil {
 		return nil, err
 	}
-	// Only the Egress Identity and content/version headers are attached. No
-	// caller/org identity, Caller Key, forwarding, or correlation headers.
+	// Only the Egress Identity and content and version headers are sent: no
+	// Caller identity, Caller Key, forwarding, or correlation headers.
 	httpReq.Header.Set("x-api-key", id.Secret)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -303,8 +303,7 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 		}
 	}
 	msg.Content = text.String()
-	// Normalize Anthropic's tool stop reason to the canonical "tool_calls" so
-	// callers see one finish reason for tool use across providers.
+	// Report tool use with the canonical "tool_calls" finish reason.
 	finish := mr.StopReason
 	if finish == "tool_use" {
 		finish = "tool_calls"
@@ -324,7 +323,7 @@ func (a *Adapter) Complete(ctx context.Context, req providers.Request, id provid
 
 // anthropicStreamEvent is the minimal shape of a Messages API SSE data frame. A
 // tool call opens with a content_block_start (content_block.type "tool_use",
-// carrying id+name) and streams its arguments as content_block_delta frames of
+// carrying id and name) and streams its arguments as content_block_delta frames of
 // type "input_json_delta" (partial_json), both keyed by the block index.
 type anthropicStreamEvent struct {
 	Type         string `json:"type"`
@@ -342,10 +341,9 @@ type anthropicStreamEvent struct {
 	} `json:"delta"`
 }
 
-// Stream implements providers.Provider for the streaming (SSE) path. It maps
-// Anthropic Messages API events to canonical chunks: content_block_start/delta
-// for tool_use → tool-call fragments, content_block_delta text → Delta text,
-// message_delta → FinishReason, message_stop / clean EOF → Done.
+// Stream implements providers.Provider for the streaming (SSE) path. tool_use
+// blocks become tool-call fragments, text deltas become Delta, message_delta
+// sets FinishReason, and message_stop or a clean EOF ends with Done.
 func (a *Adapter) Stream(ctx context.Context, req providers.Request, id providers.EgressIdentity, emit func(types.StreamChunk) error) error {
 	body, err := a.buildBody(req, true)
 	if err != nil {
@@ -372,7 +370,7 @@ func (a *Adapter) Stream(ctx context.Context, req providers.Request, id provider
 	err = streamhelper.PumpSSE(streamCtx, cancel, resp.Body, a.idleTimeout, func(data string) (bool, error) {
 		var ev anthropicStreamEvent
 		if json.Unmarshal([]byte(data), &ev) != nil {
-			return false, nil // skip malformed/keepalive frames
+			return false, nil // skip malformed and keepalive frames
 		}
 		switch ev.Type {
 		case "content_block_start":

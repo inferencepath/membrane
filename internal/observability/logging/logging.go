@@ -1,5 +1,6 @@
-// Package logging provides structured logging (slog) with secret redaction. Logs
-// must never contain secrets or caller identity on the egress side.
+// Package logging provides slog-based structured logging that masks sensitive
+// attribute values. Egress-side logs must never contain secrets or caller
+// identity.
 package logging
 
 import (
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-// sensitiveKeys are attribute keys whose values are redacted in logs.
+// sensitiveKeys are attribute keys whose values are masked in logs.
 var sensitiveKeys = map[string]struct{}{
 	"authorization": {},
 	"caller_key":    {},
@@ -24,12 +25,12 @@ var sensitiveKeys = map[string]struct{}{
 const Redacted = "REDACTED"
 
 // New returns a JSON structured logger at the given level, writing to stderr and
-// redacting sensitive attribute values.
+// masking sensitive attribute values.
 func New(level slog.Level) *slog.Logger {
 	return NewWithWriter(os.Stderr, level)
 }
 
-// NewWithWriter is like New but writes to w (useful for tests).
+// NewWithWriter is like New but writes to w.
 func NewWithWriter(w io.Writer, level slog.Level) *slog.Logger {
 	h := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		Level:       level,
