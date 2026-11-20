@@ -10,7 +10,7 @@ COVER_PROFILE := coverage.out
 BINARY        := bin/membrane
 
 # Build metadata injected into the binary.
-VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+VERSION    ?= 1.0.1
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w \

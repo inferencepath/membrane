@@ -49,6 +49,9 @@ type Adapter struct {
 	// tokenSource, when set, supplies an OAuth bearer token per request in place
 	// of the x-goog-api-key header.
 	tokenSource func(context.Context) (string, error)
+	// saTokens, when set, mints a Vertex bearer from the service-account JSON
+	// key carried in the request's Egress Identity.
+	saTokens *serviceAccountTokens
 }
 
 // Option configures a Gemini Adapter.
@@ -384,7 +387,13 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, urlStr string, body []byte
 	// Only the Egress Identity and content negotiation headers are sent: no
 	// Caller identity, Caller Key, forwarding, or correlation headers. Vertex uses
 	// an OAuth bearer token; AI Studio uses the API key.
-	if a.tokenSource != nil {
+	if a.saTokens != nil {
+		token, terr := a.saTokens.token(id.Secret)
+		if terr != nil {
+			return nil, fmt.Errorf("gemini: acquire token: %w", terr)
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+	} else if a.tokenSource != nil {
 		token, terr := a.tokenSource(ctx)
 		if terr != nil {
 			return nil, fmt.Errorf("gemini: acquire token: %w", terr)

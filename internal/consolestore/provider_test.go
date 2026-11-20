@@ -67,6 +67,30 @@ func TestProviderAdapterSetWritesSecretAndProviderAtomically(t *testing.T) {
 	}
 }
 
+func TestProviderAdapterValidatesGeminiServiceAccountKey(t *testing.T) {
+	a, mgr, _ := newProviderAdapter(t)
+	in := console.ProviderInput{
+		Name:         "vertex-main",
+		Family:       "gemini",
+		AuthMode:     "gcp_service_account_key",
+		Project:      "demo-project",
+		Location:     "us-central1",
+		Models:       []string{"gemini-2.5-flash"},
+		DefaultModel: "gemini-2.5-flash",
+		Value:        `{"type":"service_account","client_email":"service@example.iam.gserviceaccount.com","private_key":"not-a-real-key"}`,
+	}
+	if err := a.Set(in); err != nil {
+		t.Fatalf("set Vertex service account: %v", err)
+	}
+	if got, err := mgr.Get("vertex-main"); err != nil || got != in.Value {
+		t.Fatalf("sealed service account = %q, %v", got, err)
+	}
+	in.Value = `{"type":"external_account"}`
+	if err := a.Set(in); err == nil {
+		t.Fatal("external-account configuration must be rejected")
+	}
+}
+
 func TestProviderAdapterListShowsSealedAndUsedBy(t *testing.T) {
 	a, _, st := newProviderAdapter(t)
 	if err := a.Set(sampleInput("sk-value")); err != nil {

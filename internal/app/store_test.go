@@ -206,6 +206,29 @@ func TestStoreManagerReloadLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreManagerCorrectsLegacyAzureEndpoint(t *testing.T) {
+	t.Setenv("TEST_STORE_KEY", "secret-value")
+	s := newStore(t, true)
+	if _, err := s.DB().Exec(`
+		UPDATE providers
+		SET family = 'azure-openai',
+		    endpoint = 'https://demo.openai.azure.com/openai/deployments/chat/chat/completions?api-version=2024-10-21',
+		    deployment = 'chat'
+		WHERE name = 'main'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.NewStoreManager(s, nil, nil); err != nil {
+		t.Fatalf("new store manager: %v", err)
+	}
+	var endpoint string
+	if err := s.DB().QueryRow(`SELECT endpoint FROM providers WHERE name = 'main'`).Scan(&endpoint); err != nil {
+		t.Fatal(err)
+	}
+	if endpoint != "https://demo.openai.azure.com" {
+		t.Fatalf("endpoint = %q, want bare Azure resource URL", endpoint)
+	}
+}
+
 func TestStoreManagerIncompleteFailsClosed(t *testing.T) {
 	s := newStore(t, false)
 	if _, err := app.NewStoreManager(s, nil, nil); err == nil {

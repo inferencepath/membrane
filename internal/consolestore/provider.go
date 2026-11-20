@@ -109,6 +109,11 @@ func (a *ProviderAdapter) Set(in console.ProviderInput) error {
 	if err := validateProvider(row); err != nil {
 		return err
 	}
+	if authMode == config.AuthGCPServiceAccountKey {
+		if err := config.ValidateGCPServiceAccountKey(in.Value); err != nil {
+			return err
+		}
+	}
 	if !config.AuthModeUsesSecret(authMode) {
 		return a.st.UpsertProvider(store.ProviderUpsert{Provider: row})
 	}

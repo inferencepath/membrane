@@ -13,7 +13,7 @@ import (
 
 // Build metadata, set with -ldflags.
 var (
-	version   = "0.0.0-dev"
+	version   = "1.0.1"
 	commit    = "none"
 	buildTime = "unknown"
 )

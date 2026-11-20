@@ -7,7 +7,9 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -35,13 +37,16 @@ const (
 	// Default Credentials; no stored secret. Supported only by the gemini
 	// family, for Vertex AI.
 	AuthGCPApplicationDefault = "gcp_application_default"
+	// AuthGCPServiceAccountKey uses a service account JSON key resolved from
+	// SecretRef to mint Vertex AI OAuth bearer tokens.
+	AuthGCPServiceAccountKey = "gcp_service_account_key"
 )
 
 // validAuthModes maps each family to the auth modes it accepts.
 var validAuthModes = map[types.ProviderID]map[string]struct{}{
 	ProviderOpenAI:      {AuthAPIKey: {}},
 	ProviderAnthropic:   {AuthAPIKey: {}},
-	ProviderGemini:      {AuthAPIKey: {}, AuthGCPApplicationDefault: {}},
+	ProviderGemini:      {AuthAPIKey: {}, AuthGCPApplicationDefault: {}, AuthGCPServiceAccountKey: {}},
 	ProviderLocal:       {AuthAPIKey: {}},
 	ProviderAzureOpenAI: {AuthAPIKey: {}, AuthAzureManagedIdentity: {}},
 	ProviderBedrock:     {AuthAPIKey: {}, AuthAWSBearerTokenBedrock: {}, AuthAWSDefaultChain: {}, AuthAWSAssumeRole: {}},
@@ -51,11 +56,37 @@ var validAuthModes = map[types.ProviderID]map[string]struct{}{
 // ambient host identity. An empty mode means api_key.
 func AuthModeUsesSecret(mode string) bool {
 	switch mode {
-	case "", AuthAPIKey, AuthAWSBearerTokenBedrock:
+	case "", AuthAPIKey, AuthAWSBearerTokenBedrock, AuthGCPServiceAccountKey:
 		return true
 	default:
 		return false
 	}
+}
+
+// GeminiVertex reports whether an auth mode uses the Vertex AI surface rather
+// than Google AI Studio.
+func GeminiVertex(mode string) bool {
+	return mode == AuthGCPApplicationDefault || mode == AuthGCPServiceAccountKey
+}
+
+// ValidateGCPServiceAccountKey verifies the minimum safe shape of a Google
+// service account key without ever including its value in an error.
+func ValidateGCPServiceAccountKey(value string) error {
+	var key struct {
+		Type        string `json:"type"`
+		ClientEmail string `json:"client_email"`
+		PrivateKey  string `json:"private_key"`
+	}
+	if json.Unmarshal([]byte(value), &key) != nil {
+		return fmt.Errorf("the service account key must be the JSON key file downloaded from Google Cloud")
+	}
+	if key.Type != "service_account" {
+		return fmt.Errorf("the key file must be of type service_account")
+	}
+	if key.ClientEmail == "" || key.PrivateKey == "" {
+		return fmt.Errorf("the service account key is missing client_email or private_key")
+	}
+	return nil
 }
 
 // ProvidersSpec is the parsed set of configured providers.
@@ -155,7 +186,7 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 
 	// Secret-backed modes need a secret_ref; ambient modes must not have one.
 	switch authMode {
-	case AuthAPIKey, AuthAWSBearerTokenBedrock:
+	case AuthAPIKey, AuthAWSBearerTokenBedrock, AuthGCPServiceAccountKey:
 		if p.SecretRef == "" {
 			return ProviderConfig{}, fmt.Errorf("secret_ref is required for auth_mode %s", authMode)
 		}
@@ -191,6 +222,11 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		if p.Endpoint == "" {
 			return ProviderConfig{}, fmt.Errorf("azure-openai requires endpoint (resource URL)")
 		}
+		fixed, _, err := NormalizeAzureEndpoint(p.Endpoint)
+		if err != nil {
+			return ProviderConfig{}, err
+		}
+		p.Endpoint = fixed
 		if p.Deployment == "" {
 			return ProviderConfig{}, fmt.Errorf("azure-openai requires deployment")
 		}
@@ -208,12 +244,12 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 	case ProviderGemini:
 		// Vertex AI is scoped to a project and location. AI Studio (api_key)
 		// uses its public endpoint and needs neither.
-		if authMode == AuthGCPApplicationDefault {
+		if GeminiVertex(authMode) {
 			if p.Project == "" || p.Location == "" {
-				return ProviderConfig{}, fmt.Errorf("gemini vertex (gcp_application_default) requires project and location")
+				return ProviderConfig{}, fmt.Errorf("gemini vertex (%s) requires project and location", authMode)
 			}
 		} else if p.Project != "" || p.Location != "" {
-			return ProviderConfig{}, fmt.Errorf("gemini project/location are only valid with auth_mode gcp_application_default (Vertex AI)")
+			return ProviderConfig{}, fmt.Errorf("gemini project/location are only valid with a Vertex AI auth_mode")
 		}
 	}
 
@@ -232,6 +268,18 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		Location:     p.Location,
 		SecretRef:    p.SecretRef,
 	}, nil
+}
+
+// NormalizeAzureEndpoint reduces an Azure OpenAI endpoint to the resource URL.
+// The adapter owns API routes, so paths, queries and fragments would otherwise
+// create invalid Azure URLs.
+func NormalizeAzureEndpoint(endpoint string) (fixed string, changed bool, err error) {
+	u, parseErr := url.Parse(strings.TrimSpace(endpoint))
+	if parseErr != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		return "", false, fmt.Errorf("azure-openai endpoint must be the resource URL, e.g. https://<resource>.openai.azure.com")
+	}
+	fixed = u.Scheme + "://" + u.Host
+	return fixed, strings.TrimRight(endpoint, "/") != fixed, nil
 }
 
 // inferenceProfileRegionPrefixes maps the geography prefix of a Bedrock

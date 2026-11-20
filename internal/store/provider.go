@@ -27,6 +27,14 @@ func (s *Store) UpsertProvider(p ProviderUpsert) error {
 	})
 }
 
+// SetProviderEndpoint updates one provider endpoint without changing its sealed
+// credential. It is used to correct legacy Azure resource URLs that include an
+// API path owned by the adapter.
+func (s *Store) SetProviderEndpoint(name, endpoint string) error {
+	_, err := s.db.Exec(`UPDATE providers SET endpoint = ? WHERE name = ?`, endpoint, name)
+	return err
+}
+
 // upsertProviderTx inserts or updates one provider by name. Unlike
 // writeProvidersTx, it leaves other providers untouched.
 func upsertProviderTx(tx *sql.Tx, p ProviderRow) error {

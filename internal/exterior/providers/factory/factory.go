@@ -144,6 +144,10 @@ func geminiOptions(t config.TargetConfig) ([]gemini.Option, error) {
 			return tok.AccessToken, nil
 		}
 		return []gemini.Option{gemini.WithVertex(t.Project, t.Location), gemini.WithTokenSource(src)}, nil
+	case config.AuthGCPServiceAccountKey:
+		// The keyring resolves the sealed JSON key into the Egress Identity; the
+		// adapter mints and caches Vertex OAuth tokens from that key.
+		return []gemini.Option{gemini.WithVertex(t.Project, t.Location), gemini.WithServiceAccountKey()}, nil
 	default:
 		return nil, fmt.Errorf("factory: gemini unsupported auth_mode %q", t.AuthMode)
 	}

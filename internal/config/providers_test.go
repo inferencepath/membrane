@@ -33,6 +33,48 @@ providers:
 	}
 }
 
+func TestParseProvidersGeminiServiceAccountKey(t *testing.T) {
+	y := `version: 1
+providers:
+  - {name: vertex, family: gemini, auth_mode: gcp_service_account_key, project: demo-project, location: us-central1, models: [gemini-2.5-flash], default_model: gemini-2.5-flash, secret_ref: secret:vertex}
+`
+	spec, err := config.ParseProviders([]byte(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := spec.Providers[0]
+	if p.AuthMode != config.AuthGCPServiceAccountKey || p.Project != "demo-project" || p.SecretRef != "secret:vertex" {
+		t.Fatalf("provider = %+v", p)
+	}
+	for name, entry := range map[string]string{
+		"missing secret":  `{name: vertex, family: gemini, auth_mode: gcp_service_account_key, project: p, location: l, models: [m], default_model: m}`,
+		"missing project": `{name: vertex, family: gemini, auth_mode: gcp_service_account_key, location: l, models: [m], default_model: m, secret_ref: secret:vertex}`,
+		"wrong family":    `{name: vertex, family: openai, auth_mode: gcp_service_account_key, endpoint: https://x, models: [m], default_model: m, secret_ref: secret:vertex}`,
+	} {
+		if _, err := config.ParseProviders([]byte("version: 1\nproviders:\n  - " + entry + "\n")); err == nil {
+			t.Errorf("%s: expected validation failure", name)
+		}
+	}
+}
+
+func TestValidateGCPServiceAccountKeyAndAzureEndpoint(t *testing.T) {
+	good := `{"type":"service_account","client_email":"service@example.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nprivate\n-----END PRIVATE KEY-----\n"}`
+	if err := config.ValidateGCPServiceAccountKey(good); err != nil {
+		t.Fatalf("valid key: %v", err)
+	}
+	for _, key := range []string{"not json", `{"type":"external_account"}`, `{"type":"service_account","client_email":"a"}`} {
+		if err := config.ValidateGCPServiceAccountKey(key); err == nil {
+			t.Errorf("invalid service-account key %q accepted", key)
+		} else if strings.Contains(err.Error(), key) {
+			t.Errorf("error leaked key value: %v", err)
+		}
+	}
+	fixed, changed, err := config.NormalizeAzureEndpoint("https://demo.openai.azure.com/openai/deployments/chat?api-version=2024-10-21")
+	if err != nil || fixed != "https://demo.openai.azure.com" || !changed {
+		t.Fatalf("normalization = (%q, %v, %v)", fixed, changed, err)
+	}
+}
+
 func TestParseProvidersGeminiAIStudio(t *testing.T) {
 	y := `version: 1
 providers:

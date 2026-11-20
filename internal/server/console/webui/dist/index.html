@@ -1040,6 +1040,7 @@
       { v: 'anthropic', label: 'Anthropic' },
       { v: 'azure-openai', label: 'Azure OpenAI' },
       { v: 'bedrock', label: 'AWS Bedrock' },
+      { v: 'gemini', label: 'Google Gemini' },
       { v: 'local', label: 'Custom (OpenAI-compatible)' },
     ];
     let providerNamesCache = [];
@@ -1158,15 +1159,18 @@
       'anthropic': { models: ['claude-3-5-sonnet-latest'], endpoint: 'https://api.anthropic.com', auth: ['api_key'] },
       'azure-openai': { models: ['gpt-4o'], endpoint: '', auth: ['api_key', 'azure_managed_identity'] },
       'bedrock': { models: ['anthropic.claude-3-5-sonnet-20240620-v1:0'], endpoint: '', auth: ['api_key', 'aws_bearer_token_bedrock', 'aws_default_chain', 'aws_assume_role'] },
+      'gemini': { models: ['gemini-2.5-flash'], endpoint: '', auth: ['api_key', 'gcp_service_account_key', 'gcp_application_default'] },
       'local': { models: [], endpoint: '', auth: ['api_key'] },
     };
     const AUTH_LABELS = {
       api_key: 'API key', aws_default_chain: 'AWS IAM role (ambient)',
       aws_assume_role: 'AWS IAM assume-role', azure_managed_identity: 'Azure managed identity',
       aws_bearer_token_bedrock: 'AWS Bedrock bearer token',
+      gcp_service_account_key: 'Vertex AI (service account key)',
+      gcp_application_default: 'Vertex AI (ambient GCP identity)',
     };
     function authStoresSecret(auth) {
-      return auth === 'api_key' || auth === 'aws_bearer_token_bedrock';
+      return auth === 'api_key' || auth === 'aws_bearer_token_bedrock' || auth === 'gcp_service_account_key';
     }
     function famDef(kind) { return FAMILY_DEFAULTS[kind] || FAMILY_DEFAULTS['openai']; }
 
@@ -1207,6 +1211,11 @@
         row('Deployment', inp('prov-deployment', '', 'your-deployment'));
       } else if (kind === 'bedrock') {
         row('Region', inp('prov-region', '', 'us-east-1'));
+      } else if (kind === 'gemini') {
+        if (authMode === 'gcp_application_default' || authMode === 'gcp_service_account_key') {
+          row('GCP project ID', inp('prov-project', '', 'my-project-123456'));
+          row('Location', inp('prov-location', 'global', 'global or a region such as us-central1'));
+        }
       } else {
         row('Endpoint', inp('prov-endpoint', d.endpoint, 'https://…'));
       }
@@ -1221,6 +1230,8 @@
         }
       } else if (authMode === 'aws_bearer_token_bedrock') {
         row('AWS bearer token', inp('prov-bearer', '', 'ABS…', 'password'));
+      } else if (authMode === 'gcp_service_account_key') {
+        row('Service account key (JSON)', '<textarea id="prov-sa-json" rows="4" style="width:100%;-webkit-text-security:disc" placeholder="Paste the JSON key file from Google Cloud IAM" autocomplete="off" spellcheck="false"></textarea>');
       } else if (authMode === 'aws_assume_role') {
         row('Role ARN', inp('prov-role-arn', '', 'arn:aws:iam::123456789012:role/membrane'));
         row('External ID (optional)', inp('prov-external-id', '', ''));
@@ -1282,13 +1293,15 @@
         }
       } else if (authMode === 'aws_bearer_token_bedrock') {
         value = val('prov-bearer');
+      } else if (authMode === 'gcp_service_account_key') {
+        value = val('prov-sa-json');
       }
       return {
         name: providerNameFromForm(), family: kind, authMode,
         roleArn: val('prov-role-arn'), externalId: val('prov-external-id'),
         models, defaultModel: val('prov-default'),
         endpoint: val('prov-endpoint'), deployment: val('prov-deployment'),
-        region: val('prov-region'), value,
+        region: val('prov-region'), project: val('prov-project'), location: val('prov-location'), value,
       };
     }
 
@@ -1302,6 +1315,8 @@
       if (body.authMode === 'api_key' && !body.value) return fail('the API key is required');
       if (body.authMode === 'aws_bearer_token_bedrock' && !body.value) return fail('the AWS bearer token is required');
       if (body.authMode === 'aws_assume_role' && !body.roleArn) return fail('a role ARN is required');
+      if (body.authMode === 'gcp_service_account_key' && !body.value) return fail('the service account JSON key is required');
+      if ((body.authMode === 'gcp_application_default' || body.authMode === 'gcp_service_account_key') && (!body.project || !body.location)) return fail('a GCP project ID and location are required');
       const res = await fetch('/api/console/providers',
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const b = await res.json().catch(() => ({}));

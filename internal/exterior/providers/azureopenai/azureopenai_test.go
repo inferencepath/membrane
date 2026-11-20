@@ -41,7 +41,7 @@ func TestCompleteSuccess(t *testing.T) {
 	a := azureopenai.New(ts.URL, "my-deploy", 0)
 	resp, err := a.Complete(context.Background(), providers.Request{
 		Model:   "gpt-4o",
-		Payload: map[string]any{"messages": []any{}, "temperature": 0.2, "stream": false},
+		Payload: map[string]any{"messages": []any{}, "temperature": 0.2, "max_tokens": 64, "stream": false},
 	}, providers.EgressIdentity{Secret: "azkey"})
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -61,6 +61,12 @@ func TestCompleteSuccess(t *testing.T) {
 	}
 	if _, ok := gotBody["stream"]; ok {
 		t.Error("stream must not be sent")
+	}
+	if _, ok := gotBody["max_tokens"]; ok {
+		t.Error("max_tokens must be translated for Azure")
+	}
+	if gotBody["max_completion_tokens"] != float64(64) {
+		t.Errorf("max_completion_tokens = %v, want 64", gotBody["max_completion_tokens"])
 	}
 	if resp.Message.Content != "ok" || resp.Usage.TotalTokens != 4 || resp.Provider != "azure-openai" {
 		t.Errorf("resp = %+v", resp)

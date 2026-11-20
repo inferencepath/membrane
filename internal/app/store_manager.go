@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/inferencepath/membrane/internal/config"
 	"github.com/inferencepath/membrane/internal/membrane/transporter"
 	"github.com/inferencepath/membrane/internal/server/chat"
 	"github.com/inferencepath/membrane/internal/store"
@@ -54,6 +55,9 @@ func NewStoreManager(st *store.Store, obs transporter.Observer, logger *slog.Log
 	for _, opt := range opts {
 		opt(m)
 	}
+	if err := m.fixProviderEndpoints(); err != nil {
+		return nil, err
+	}
 	snap, _, err := BuildSnapshotFromStoreWithSecrets(st, obs, m.secretResolve)
 	if err != nil {
 		return nil, err
@@ -75,6 +79,9 @@ func (m *StoreManager) Reload() ReloadResult {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if err := m.fixProviderEndpoints(); err != nil {
+		return m.report(ReloadResult{Applied: false, Reason: err.Error()})
+	}
 	if h, herr := m.st.ContentHash(); herr == nil && h == m.lastHash {
 		return m.report(ReloadResult{Applied: false, Unchanged: true})
 	}
@@ -90,6 +97,33 @@ func (m *StoreManager) Reload() ReloadResult {
 	}
 	m.logger.Info("managed configuration reloaded")
 	return m.report(ReloadResult{Applied: true})
+}
+
+// fixProviderEndpoints upgrades stored Azure OpenAI endpoints to the bare
+// resource URL. The adapter owns the deployment/API path; retaining a copied
+// endpoint path would make requests fail at Azure.
+func (m *StoreManager) fixProviderEndpoints() error {
+	rows, err := m.st.ReadProviders()
+	if err != nil {
+		return err
+	}
+	for _, p := range rows {
+		if p.Family != string(config.ProviderAzureOpenAI) {
+			continue
+		}
+		fixed, changed, err := config.NormalizeAzureEndpoint(p.Endpoint)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			continue
+		}
+		if err := m.st.SetProviderEndpoint(p.Name, fixed); err != nil {
+			return err
+		}
+		m.logger.Warn("provider endpoint corrected", "provider", p.Name)
+	}
+	return nil
 }
 
 func (m *StoreManager) report(r ReloadResult) ReloadResult {

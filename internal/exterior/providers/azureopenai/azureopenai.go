@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	// defaultAPIVersion pins the Azure OpenAI REST API version.
-	defaultAPIVersion = "2024-02-01"
+	// defaultAPIVersion supports modern deployments and
+	// max_completion_tokens.
+	defaultAPIVersion = "2024-10-21"
 	// defaultIdleTimeout bounds inactivity on a streaming response when unset.
 	defaultIdleTimeout = 30 * time.Second
 )
@@ -88,8 +89,17 @@ func (a *Adapter) buildBody(req providers.Request, stream bool) ([]byte, error) 
 	}
 	// The deployment in the path selects the model.
 	delete(body, "model")
+	// Reasoning deployments reject max_tokens; max_completion_tokens is
+	// accepted by both conventional and reasoning deployments.
+	if value, ok := body["max_tokens"]; ok {
+		delete(body, "max_tokens")
+		if _, present := body["max_completion_tokens"]; !present {
+			body["max_completion_tokens"] = value
+		}
+	}
 	if stream {
 		body["stream"] = true
+		body["stream_options"] = map[string]any{"include_usage": true}
 	} else {
 		delete(body, "stream")
 	}

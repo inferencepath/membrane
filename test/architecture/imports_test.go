@@ -126,6 +126,22 @@ func TestCoreDependencyAllowlist(t *testing.T) {
 	}
 }
 
+// TestCommunityCoreDoesNotImportEnterprise prevents selective upstream ports
+// from accidentally pulling licensing, protection, reporting, or portal code
+// into the standalone Community build.
+func TestCommunityCoreDoesNotImportEnterprise(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range []string{"cmd", "internal"} {
+		for dir, imps := range importsOfTree(t, root, rel) {
+			for _, imp := range imps {
+				if strings.HasPrefix(imp, module+"/enterprise") {
+					t.Errorf("%s imports Enterprise package %s", dir, imp)
+				}
+			}
+		}
+	}
+}
+
 // isStdlib reports whether imp is a standard library path, meaning its first
 // element has no dot.
 func isStdlib(imp string) bool {
