@@ -11,10 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/inferencepath/membrane/internal/exterior/providers"
+	"github.com/inferencepath/membrane/internal/exterior/providers/gcpauth"
 	"github.com/inferencepath/membrane/internal/exterior/providers/streamhelper"
 	"github.com/inferencepath/membrane/internal/types"
 )
@@ -30,27 +32,70 @@ const (
 	defaultIdleTimeout = 30 * time.Second
 )
 
+// vertexAPIVersion is the anthropic_version body field Vertex AI requires in
+// place of the anthropic-version header.
+const vertexAPIVersion = "vertex-2023-10-16"
+
 // Adapter is an Anthropic Messages API Provider adapter.
 type Adapter struct {
 	id          types.ProviderID
 	baseURL     string
 	idleTimeout time.Duration
 	client      *http.Client
+
+	// Vertex AI surface: Claude served from a GCP project/location, authorized
+	// by an OAuth bearer from tokenSource (ambient identity) or saTokens (sealed
+	// service account key carried as the Egress Identity secret).
+	vertex      bool
+	project     string
+	location    string
+	tokenSource func(context.Context) (string, error)
+	saTokens    *gcpauth.ServiceAccountTokens
+}
+
+// Option configures an Anthropic Adapter.
+type Option func(*Adapter)
+
+// WithVertex selects Claude on Vertex AI for the given GCP project + location.
+// Neither value is ever disclosed to a Caller.
+func WithVertex(project, location string) Option {
+	return func(a *Adapter) {
+		a.vertex = true
+		a.project = project
+		a.location = location
+	}
+}
+
+// WithTokenSource attaches an OAuth bearer source (ambient GCP identity),
+// called per request so tokens refresh transparently.
+func WithTokenSource(src func(context.Context) (string, error)) Option {
+	return func(a *Adapter) { a.tokenSource = src }
+}
+
+// WithServiceAccountKey mints Vertex AI bearers from the request's Egress
+// Identity secret, which holds a service account JSON key.
+func WithServiceAccountKey() Option {
+	return func(a *Adapter) { a.saTokens = &gcpauth.ServiceAccountTokens{} }
 }
 
 // New returns an Anthropic adapter for the given base URL. idleTimeout bounds
 // inactivity on streaming responses; a value <= 0 selects the default. The
-// reported ID is "anthropic".
-func New(baseURL string, idleTimeout time.Duration) *Adapter {
+// reported ID is "anthropic". Under WithVertex an empty baseURL selects the
+// Vertex AI host for the location.
+func New(baseURL string, idleTimeout time.Duration, opts ...Option) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
 	}
-	return &Adapter{
+	a := &Adapter{
 		id:          "anthropic",
 		baseURL:     strings.TrimRight(baseURL, "/"),
 		idleTimeout: idleTimeout,
 		client:      &http.Client{},
 	}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
 }
 
 // ID implements providers.Provider.
@@ -222,6 +267,9 @@ func anthropicToolChoice(raw any) map[string]any {
 }
 
 func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.EgressIdentity, stream bool) (*http.Request, error) {
+	if a.vertex {
+		return a.newVertexRequest(ctx, body, id, stream)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+messagesPath, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -230,13 +278,66 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	// Caller identity, Caller Key, forwarding, or correlation headers.
 	httpReq.Header.Set("x-api-key", id.Secret)
 	httpReq.Header.Set("anthropic-version", apiVersion)
+	setAccept(httpReq, stream)
+	return httpReq, nil
+}
+
+// newVertexRequest sends a Messages API body to Claude on Vertex AI: the model
+// moves from the body into the rawPredict/streamRawPredict URL, the API version
+// moves into the body, and the Egress Identity becomes a GCP OAuth bearer.
+func (a *Adapter) newVertexRequest(ctx context.Context, body []byte, id providers.EgressIdentity, stream bool) (*http.Request, error) {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, fmt.Errorf("anthropic: vertex body: %w", err)
+	}
+	model, _ := m["model"].(string)
+	if model == "" {
+		return nil, fmt.Errorf("anthropic: vertex request has no model")
+	}
+	delete(m, "model")
+	m["anthropic_version"] = vertexAPIVersion
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: marshal request: %w", err)
+	}
+	host := a.baseURL
+	if host == "" {
+		host = gcpauth.VertexHost(a.location)
+	}
+	method := "rawPredict"
+	if stream {
+		method = "streamRawPredict"
+	}
+	u := fmt.Sprintf("%s/v1/projects/%s/locations/%s/publishers/anthropic/models/%s:%s",
+		host, url.PathEscape(a.project), url.PathEscape(a.location), url.PathEscape(model), method)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	var token string
+	switch {
+	case a.saTokens != nil:
+		token, err = a.saTokens.Token(id.Secret)
+	case a.tokenSource != nil:
+		token, err = a.tokenSource(ctx)
+	default:
+		err = fmt.Errorf("no GCP credential configured")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: acquire token: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	setAccept(httpReq, stream)
+	return httpReq, nil
+}
+
+func setAccept(httpReq *http.Request, stream bool) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	} else {
 		httpReq.Header.Set("Accept", "application/json")
 	}
-	return httpReq, nil
 }
 
 func mapErr(ctx context.Context, err error) error {

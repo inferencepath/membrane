@@ -45,14 +45,19 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 		types.OperationChat, types.OperationEmbeddings, types.OperationResponses,
 		types.OperationImageGeneration, types.OperationAudioTranscription,
 		types.OperationAudioSpeech, types.OperationModerations,
+		types.OperationMultimodalChat,
 	),
 	config.ProviderBedrock: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationImageGeneration, types.OperationMultimodalChat,
 	),
-	// Gemini embeddings use embedContent.
+	// Gemini embeddings use embedContent; image generation uses Imagen predict
+	// or Gemini image models; transcription is generateContent on audio input;
+	// rerank uses the Vertex AI Ranking API (Vertex only, refused on AI Studio).
 	config.ProviderGemini: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationMultimodalChat,
+		types.OperationImageGeneration, types.OperationAudioTranscription,
+		types.OperationRerank,
 	),
 }
 

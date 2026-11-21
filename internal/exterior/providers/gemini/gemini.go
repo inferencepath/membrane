@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/inferencepath/membrane/internal/exterior/providers"
+	"github.com/inferencepath/membrane/internal/exterior/providers/gcpauth"
 	"github.com/inferencepath/membrane/internal/exterior/providers/streamhelper"
 	"github.com/inferencepath/membrane/internal/types"
 )
@@ -51,7 +52,7 @@ type Adapter struct {
 	tokenSource func(context.Context) (string, error)
 	// saTokens, when set, mints a Vertex bearer from the service-account JSON
 	// key carried in the request's Egress Identity.
-	saTokens *serviceAccountTokens
+	saTokens *gcpauth.ServiceAccountTokens
 }
 
 // Option configures a Gemini Adapter.
@@ -104,7 +105,7 @@ func (a *Adapter) base() string {
 		return a.baseURL
 	}
 	if a.vertex {
-		return fmt.Sprintf("https://%s-aiplatform.googleapis.com", a.location)
+		return gcpauth.VertexHost(a.location)
 	}
 	return defaultBaseURL
 }
@@ -388,7 +389,7 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, urlStr string, body []byte
 	// Caller identity, Caller Key, forwarding, or correlation headers. Vertex uses
 	// an OAuth bearer token; AI Studio uses the API key.
 	if a.saTokens != nil {
-		token, terr := a.saTokens.token(id.Secret)
+		token, terr := a.saTokens.Token(id.Secret)
 		if terr != nil {
 			return nil, fmt.Errorf("gemini: acquire token: %w", terr)
 		}

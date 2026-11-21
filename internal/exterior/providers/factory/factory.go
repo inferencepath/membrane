@@ -54,9 +54,13 @@ func Build(t config.TargetConfig) (providers.Provider, error) {
 	case config.ProviderOpenAI, config.ProviderLocal:
 		// local is OpenAI-compatible; reuse the OpenAI adapter but keep the
 		// configured family as the reported (revealable) ID.
-		return openai.New(t.Provider, t.Endpoint, t.TimeoutIdle), nil
+		return localOrOpenAI(t)
 	case config.ProviderAnthropic:
-		return anthropic.New(t.Endpoint, t.TimeoutIdle), nil
+		opts, err := anthropicOptions(t)
+		if err != nil {
+			return nil, err
+		}
+		return anthropic.New(t.Endpoint, t.TimeoutIdle, opts...), nil
 	case config.ProviderGemini:
 		opts, err := geminiOptions(t)
 		if err != nil {
@@ -125,31 +129,78 @@ func geminiOptions(t config.TargetConfig) ([]gemini.Option, error) {
 	case "", config.AuthAPIKey:
 		return nil, nil
 	case config.AuthGCPApplicationDefault:
-		var (
-			once  sync.Once
-			ts    oauth2.TokenSource
-			tsErr error
-		)
-		src := func(ctx context.Context) (string, error) {
-			once.Do(func() {
-				ts, tsErr = google.DefaultTokenSource(ctx, gcpCloudPlatformScope)
-			})
-			if tsErr != nil {
-				return "", tsErr
-			}
-			tok, terr := ts.Token()
-			if terr != nil {
-				return "", terr
-			}
-			return tok.AccessToken, nil
-		}
-		return []gemini.Option{gemini.WithVertex(t.Project, t.Location), gemini.WithTokenSource(src)}, nil
+		return []gemini.Option{gemini.WithVertex(t.Project, t.Location), gemini.WithTokenSource(gcpDefaultTokenSource())}, nil
 	case config.AuthGCPServiceAccountKey:
 		// The keyring resolves the sealed JSON key into the Egress Identity; the
 		// adapter mints and caches Vertex OAuth tokens from that key.
 		return []gemini.Option{gemini.WithVertex(t.Project, t.Location), gemini.WithServiceAccountKey()}, nil
 	default:
 		return nil, fmt.Errorf("factory: gemini unsupported auth_mode %q", t.AuthMode)
+	}
+}
+
+// localOrOpenAI builds the OpenAI-compatible adapter. With a GCP auth mode the
+// local family targets Vertex AI's OpenAI-compatible endpoint for the
+// project/location (unless a private endpoint is set) with a Google bearer.
+func localOrOpenAI(t config.TargetConfig) (providers.Provider, error) {
+	switch t.AuthMode {
+	case "", config.AuthAPIKey:
+		return openai.New(t.Provider, t.Endpoint, t.TimeoutIdle), nil
+	case config.AuthGCPApplicationDefault, config.AuthGCPServiceAccountKey:
+		if t.Provider != config.ProviderLocal {
+			return nil, fmt.Errorf("factory: %s unsupported auth_mode %q", t.Provider, t.AuthMode)
+		}
+		base := t.Endpoint
+		if base == "" {
+			base = openai.VertexOpenAIBase(t.Project, t.Location)
+		}
+		opt := openai.WithServiceAccountKey()
+		if t.AuthMode == config.AuthGCPApplicationDefault {
+			opt = openai.WithTokenSource(gcpDefaultTokenSource())
+		}
+		return openai.New(t.Provider, base, t.TimeoutIdle, opt), nil
+	default:
+		return nil, fmt.Errorf("factory: %s unsupported auth_mode %q", t.Provider, t.AuthMode)
+	}
+}
+
+// anthropicOptions builds the Anthropic adapter's surface options. api_key (the
+// default) is api.anthropic.com; the GCP modes select Claude on Vertex AI for
+// the project/location with an ambient (ADC) or sealed-key bearer.
+func anthropicOptions(t config.TargetConfig) ([]anthropic.Option, error) {
+	switch t.AuthMode {
+	case "", config.AuthAPIKey:
+		return nil, nil
+	case config.AuthGCPApplicationDefault:
+		return []anthropic.Option{anthropic.WithVertex(t.Project, t.Location), anthropic.WithTokenSource(gcpDefaultTokenSource())}, nil
+	case config.AuthGCPServiceAccountKey:
+		return []anthropic.Option{anthropic.WithVertex(t.Project, t.Location), anthropic.WithServiceAccountKey()}, nil
+	default:
+		return nil, fmt.Errorf("factory: anthropic unsupported auth_mode %q", t.AuthMode)
+	}
+}
+
+// gcpDefaultTokenSource returns an Application Default Credentials bearer
+// source, resolved lazily on first use so Build performs no credential
+// discovery or network I/O.
+func gcpDefaultTokenSource() func(context.Context) (string, error) {
+	var (
+		once  sync.Once
+		ts    oauth2.TokenSource
+		tsErr error
+	)
+	return func(ctx context.Context) (string, error) {
+		once.Do(func() {
+			ts, tsErr = google.DefaultTokenSource(ctx, gcpCloudPlatformScope)
+		})
+		if tsErr != nil {
+			return "", tsErr
+		}
+		tok, terr := ts.Token()
+		if terr != nil {
+			return "", terr
+		}
+		return tok.AccessToken, nil
 	}
 }
 

@@ -28,7 +28,7 @@ RUN go mod download && go mod verify
 
 COPY . .
 
-ARG VERSION=1.0.1
+ARG VERSION=1.0.2
 ARG COMMIT=none
 ARG BUILD_TIME=unknown
 # CGO disabled -> a static binary that runs on distroless/scratch (the SQLite

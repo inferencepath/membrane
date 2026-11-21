@@ -93,6 +93,9 @@ func TestBuildAmbientAuthModes(t *testing.T) {
 		{"bedrock assume role", config.TargetConfig{Provider: config.ProviderBedrock, Region: "us-east-1", AuthMode: config.AuthAWSAssumeRole, RoleARN: "arn:aws:iam::1:role/r", ExternalID: "ext"}, "bedrock"},
 		{"azure managed identity", config.TargetConfig{Provider: config.ProviderAzureOpenAI, Endpoint: "http://x", Deployment: "d", AuthMode: config.AuthAzureManagedIdentity}, "azure-openai"},
 		{"gemini vertex adc", config.TargetConfig{Provider: config.ProviderGemini, AuthMode: config.AuthGCPApplicationDefault, Project: "proj", Location: "us-central1"}, "gemini"},
+		{"local vertex sa key", config.TargetConfig{Provider: config.ProviderLocal, AuthMode: config.AuthGCPServiceAccountKey, Project: "proj", Location: "global"}, "local"},
+		{"claude vertex adc", config.TargetConfig{Provider: config.ProviderAnthropic, AuthMode: config.AuthGCPApplicationDefault, Project: "proj", Location: "us-east5"}, "anthropic"},
+		{"claude vertex sa key", config.TargetConfig{Provider: config.ProviderAnthropic, AuthMode: config.AuthGCPServiceAccountKey, Project: "proj", Location: "global"}, "anthropic"},
 		{"gemini vertex service account", config.TargetConfig{Provider: config.ProviderGemini, AuthMode: config.AuthGCPServiceAccountKey, Project: "proj", Location: "us-central1"}, "gemini"},
 	}
 	for _, tc := range tests {

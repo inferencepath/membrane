@@ -121,6 +121,57 @@ providers:
 	}
 }
 
+func TestParseProvidersAnthropicVertex(t *testing.T) {
+	y := `version: 1
+providers:
+  - {name: claude-vertex, family: anthropic, auth_mode: gcp_application_default, project: my-proj, location: us-east5, models: [claude-sonnet-5-5], default_model: claude-sonnet-5-5}
+  - {name: claude-vertex-sa, family: anthropic, auth_mode: gcp_service_account_key, project: my-proj, location: global, models: [claude-sonnet-5-5], default_model: claude-sonnet-5-5, secret_ref: secret:claude-vertex-sa}
+`
+	spec, err := config.ParseProviders([]byte(y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := spec.Providers[0]; p.Project != "my-proj" || p.Location != "us-east5" || p.SecretRef != "" || p.Endpoint != "" {
+		t.Fatalf("ambient Claude on Vertex = %+v", p)
+	}
+	if p := spec.Providers[1]; p.SecretRef != "secret:claude-vertex-sa" {
+		t.Fatalf("service-account Claude on Vertex = %+v", p)
+	}
+}
+
+func TestParseProvidersAnthropicVertexRejects(t *testing.T) {
+	cases := map[string]string{
+		"missing project/location":   `{name: c, family: anthropic, auth_mode: gcp_application_default, models: [m], default_model: m}`,
+		"api.anthropic.com endpoint": `{name: c, family: anthropic, auth_mode: gcp_application_default, project: p, location: us-east5, endpoint: "https://api.anthropic.com", models: [m], default_model: m}`,
+		"project on api_key":         `{name: c, family: anthropic, auth_mode: api_key, endpoint: "https://api.anthropic.com", project: p, location: l, models: [m], default_model: m, secret_ref: env:K}`,
+		"api_key without endpoint":   `{name: c, family: anthropic, auth_mode: api_key, models: [m], default_model: m, secret_ref: env:K}`,
+	}
+	for name, entry := range cases {
+		if _, err := config.ParseProviders([]byte("version: 1\nproviders:\n  - " + entry + "\n")); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+}
+
+func TestParseProvidersLocalVertex(t *testing.T) {
+	ok := `version: 1
+providers:
+  - {name: vertex-oai, family: local, auth_mode: gcp_service_account_key, project: p, location: global, models: [meta/llama], default_model: meta/llama, secret_ref: secret:vertex-oai}
+`
+	if _, err := config.ParseProviders([]byte(ok)); err != nil {
+		t.Fatal(err)
+	}
+	for name, entry := range map[string]string{
+		"missing project/location": `{name: c, family: local, auth_mode: gcp_application_default, models: [m], default_model: m}`,
+		"project on api_key":       `{name: c, family: local, auth_mode: api_key, endpoint: "http://x", project: p, location: l, models: [m], default_model: m, secret_ref: env:K}`,
+		"openai with gcp":          `{name: c, family: openai, auth_mode: gcp_application_default, project: p, location: l, endpoint: "http://x", models: [m], default_model: m}`,
+	} {
+		if _, err := config.ParseProviders([]byte("version: 1\nproviders:\n  - " + entry + "\n")); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+}
+
 func TestParseProvidersGeminiAIStudioRejectsProjectLocation(t *testing.T) {
 	y := `version: 1
 providers:

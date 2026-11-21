@@ -14,10 +14,12 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/inferencepath/membrane/internal/exterior/providers"
+	"github.com/inferencepath/membrane/internal/exterior/providers/gcpauth"
 	"github.com/inferencepath/membrane/internal/exterior/providers/oaitools"
 	"github.com/inferencepath/membrane/internal/types"
 )
@@ -40,20 +42,71 @@ type Adapter struct {
 	baseURL     string
 	idleTimeout time.Duration
 	client      *http.Client
+
+	// With a GCP credential the bearer is a Google OAuth token minted from the
+	// ambient identity (tokenSource) or from the service account JSON key
+	// carried as the Egress Identity secret (saTokens), for Vertex AI's
+	// OpenAI-compatible endpoint.
+	tokenSource func(context.Context) (string, error)
+	saTokens    *gcpauth.ServiceAccountTokens
+}
+
+// Option configures an OpenAI-compatible Adapter.
+type Option func(*Adapter)
+
+// WithTokenSource authorizes with a bearer from the given source (ambient GCP
+// identity), called per request so tokens refresh transparently.
+func WithTokenSource(src func(context.Context) (string, error)) Option {
+	return func(a *Adapter) { a.tokenSource = src }
+}
+
+// WithServiceAccountKey mints the bearer from the request's Egress Identity
+// secret, which holds a Google service account JSON key.
+func WithServiceAccountKey() Option {
+	return func(a *Adapter) { a.saTokens = &gcpauth.ServiceAccountTokens{} }
+}
+
+// VertexOpenAIBase returns Vertex AI's OpenAI-compatible base URL for a GCP
+// project and location.
+func VertexOpenAIBase(project, location string) string {
+	return fmt.Sprintf("%s/v1/projects/%s/locations/%s/endpoints/openapi",
+		gcpauth.VertexHost(location), url.PathEscape(project), url.PathEscape(location))
 }
 
 // New returns an adapter for the given Provider id and base URL. idleTimeout
-// bounds inactivity on streaming responses; a value <= 0 selects the default.
-func New(id types.ProviderID, baseURL string, idleTimeout time.Duration) *Adapter {
+// bounds inactivity on streaming responses (defaulted if <= 0).
+func New(id types.ProviderID, baseURL string, idleTimeout time.Duration, opts ...Option) *Adapter {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultIdleTimeout
 	}
-	return &Adapter{
+	a := &Adapter{
 		id:          id,
 		baseURL:     strings.TrimRight(baseURL, "/"),
 		idleTimeout: idleTimeout,
 		client:      &http.Client{},
 	}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
+}
+
+// setAuth attaches only the Egress Identity as the bearer: the static key, or
+// a Google OAuth token when a GCP credential is configured.
+func (a *Adapter) setAuth(ctx context.Context, httpReq *http.Request, id providers.EgressIdentity) error {
+	token := id.Secret
+	var err error
+	switch {
+	case a.saTokens != nil:
+		token, err = a.saTokens.Token(id.Secret)
+	case a.tokenSource != nil:
+		token, err = a.tokenSource(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("openai: acquire token: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
 
 // ID implements providers.Provider.
@@ -96,7 +149,9 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 	}
 	// Only the Egress Identity and content negotiation headers are sent: no
 	// Caller identity, Caller Key, forwarding, or correlation headers.
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return nil, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
@@ -111,7 +166,7 @@ func (a *Adapter) newHTTPRequest(ctx context.Context, body []byte, id providers.
 // /v1.
 func chatCompletionsURL(base string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + chatCompletionsPath
 	}
 	return b + "/v1" + chatCompletionsPath
@@ -120,7 +175,7 @@ func chatCompletionsURL(base string) string {
 // embeddingsURL is chatCompletionsURL for the /embeddings endpoint.
 func embeddingsURL(base string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + embeddingsPath
 	}
 	return b + "/v1" + embeddingsPath
@@ -160,7 +215,9 @@ func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id prov
 	if err != nil {
 		return types.CanonicalEmbeddings{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalEmbeddings{}, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
@@ -204,7 +261,7 @@ func (a *Adapter) Embeddings(ctx context.Context, req providers.Request, id prov
 // rerankURL is chatCompletionsURL for the /rerank endpoint.
 func rerankURL(base string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + rerankPath
 	}
 	return b + "/v1" + rerankPath
@@ -235,7 +292,9 @@ func (a *Adapter) Rerank(ctx context.Context, req providers.Request, id provider
 	if err != nil {
 		return types.CanonicalRerank{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalRerank{}, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
@@ -274,7 +333,7 @@ func (a *Adapter) Rerank(ctx context.Context, req providers.Request, id provider
 // responsesURL is chatCompletionsURL for the /responses endpoint.
 func responsesURL(base string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + responsesPath
 	}
 	return b + "/v1" + responsesPath
@@ -335,7 +394,9 @@ func (a *Adapter) newResponsesRequest(ctx context.Context, body []byte, id provi
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return nil, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
@@ -429,7 +490,7 @@ func (a *Adapter) ResponsesStream(ctx context.Context, req providers.Request, id
 // endpoint.
 func imagesGenerationsURL(base string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + imagesGenerationsPath
 	}
 	return b + "/v1" + imagesGenerationsPath
@@ -453,7 +514,9 @@ func (a *Adapter) Images(ctx context.Context, req providers.Request, id provider
 	if err != nil {
 		return types.CanonicalImage{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalImage{}, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
@@ -485,9 +548,15 @@ func (a *Adapter) Images(ctx context.Context, req providers.Request, id provider
 	}, nil
 }
 
+// hasVersionedBase reports whether a base URL already carries its API version:
+// a trailing /v1, or Vertex AI's OpenAI-compatible /endpoints/openapi path.
+func hasVersionedBase(b string) bool {
+	return strings.HasSuffix(b, "/v1") || strings.HasSuffix(b, "/endpoints/openapi")
+}
+
 func opURL(base, path string) string {
 	b := strings.TrimRight(base, "/")
-	if strings.HasSuffix(b, "/v1") {
+	if hasVersionedBase(b) {
 		return b + path
 	}
 	return b + "/v1" + path
@@ -512,7 +581,9 @@ func (a *Adapter) Moderate(ctx context.Context, req providers.Request, id provid
 	if err != nil {
 		return types.CanonicalModerations{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalModerations{}, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
@@ -577,7 +648,9 @@ func (a *Adapter) Transcribe(ctx context.Context, req providers.Request, id prov
 	if err != nil {
 		return types.CanonicalTranscription{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalTranscription{}, err
+	}
 	httpReq.Header.Set("Content-Type", mw.FormDataContentType())
 	httpReq.Header.Set("Accept", "application/json")
 
@@ -640,7 +713,9 @@ func (a *Adapter) Speech(ctx context.Context, req providers.Request, id provider
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)

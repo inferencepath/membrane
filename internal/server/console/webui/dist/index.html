@@ -1156,11 +1156,11 @@
     // auth modes the family supports. local = custom OpenAI-compatible endpoint.
     const FAMILY_DEFAULTS = {
       'openai': { models: ['gpt-4o', 'gpt-4o-mini'], endpoint: 'https://api.openai.com/v1', auth: ['api_key'] },
-      'anthropic': { models: ['claude-3-5-sonnet-latest'], endpoint: 'https://api.anthropic.com', auth: ['api_key'] },
+      'anthropic': { models: ['claude-3-5-sonnet-latest'], endpoint: 'https://api.anthropic.com', auth: ['api_key', 'gcp_service_account_key', 'gcp_application_default'] },
       'azure-openai': { models: ['gpt-4o'], endpoint: '', auth: ['api_key', 'azure_managed_identity'] },
       'bedrock': { models: ['anthropic.claude-3-5-sonnet-20240620-v1:0'], endpoint: '', auth: ['api_key', 'aws_bearer_token_bedrock', 'aws_default_chain', 'aws_assume_role'] },
       'gemini': { models: ['gemini-2.5-flash'], endpoint: '', auth: ['api_key', 'gcp_service_account_key', 'gcp_application_default'] },
-      'local': { models: [], endpoint: '', auth: ['api_key'] },
+      'local': { models: [], endpoint: '', auth: ['api_key', 'gcp_service_account_key', 'gcp_application_default'] },
     };
     const AUTH_LABELS = {
       api_key: 'API key', aws_default_chain: 'AWS IAM role (ambient)',
@@ -1211,10 +1211,10 @@
         row('Deployment', inp('prov-deployment', '', 'your-deployment'));
       } else if (kind === 'bedrock') {
         row('Region', inp('prov-region', '', 'us-east-1'));
-      } else if (kind === 'gemini') {
+      } else if (kind === 'gemini' || ((kind === 'anthropic' || kind === 'local') && authMode.startsWith('gcp_'))) {
         if (authMode === 'gcp_application_default' || authMode === 'gcp_service_account_key') {
           row('GCP project ID', inp('prov-project', '', 'my-project-123456'));
-          row('Location', inp('prov-location', 'global', 'global or a region such as us-central1'));
+          row('Location', inp('prov-location', 'global', kind === 'anthropic' ? 'global or a Claude region such as us-east5' : kind === 'local' ? 'global or a region such as us-central1 (Vertex AI OpenAI-compatible endpoint)' : 'global or a region such as us-central1'));
         }
       } else {
         row('Endpoint', inp('prov-endpoint', d.endpoint, 'https://…'));
@@ -1236,7 +1236,7 @@
         row('Role ARN', inp('prov-role-arn', '', 'arn:aws:iam::123456789012:role/membrane'));
         row('External ID (optional)', inp('prov-external-id', '', ''));
       } else {
-        row('', '<span class="muted">Uses the host\u2019s ambient identity; no key is stored.</span>');
+        row('', '<span class="muted">Uses the host\u2019s ambient identity; no key is stored.' + (authMode === 'gcp_application_default' ? ' Use this when Membrane runs inside Google Cloud.' : '') + '</span>');
       }
       return `<div style="display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;max-width:720px">${g.join('')}</div>`;
     }

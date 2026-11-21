@@ -9,6 +9,23 @@ The error-model and observability contracts are versioned independently (both at
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-11-21
+
+### Added
+
+- **Azure OpenAI multimodal chat.** `multimodal_chat` pathways on Azure OpenAI
+  accept text, image and audio input and can return a spoken reply.
+- **Claude on Vertex AI.** The `anthropic` family accepts the
+  `gcp_application_default` and `gcp_service_account_key` auth modes with a
+  `project` and `location`.
+- **Gemini image generation** (Imagen and Gemini image models), **audio
+  transcription**, and **rerank** (Vertex AI Ranking API; Vertex only).
+- **Other Vertex AI hosted models.** The `local` family accepts the GCP auth
+  modes and, given a `project` and `location`, targets the Vertex AI
+  OpenAI-compatible endpoint.
+- The Console offers the GCP auth modes for the `anthropic` and `local`
+  families.
+
 ### Changed
 
 - **Console default port is now `8300`** (was `7474`): the built-in default,

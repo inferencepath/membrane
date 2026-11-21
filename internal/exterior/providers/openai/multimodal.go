@@ -93,7 +93,9 @@ func (a *Adapter) CompleteMultimodal(ctx context.Context, req providers.Request,
 	if err != nil {
 		return types.CanonicalMultimodal{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+id.Secret)
+	if err := a.setAuth(ctx, httpReq, id); err != nil {
+		return types.CanonicalMultimodal{}, err
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 

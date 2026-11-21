@@ -21,7 +21,7 @@ services:
     build:
       context: .
       args:
-        VERSION: ${MEMBRANE_TAG:-1.0.1}
+        VERSION: ${MEMBRANE_TAG:-1.0.2}
     restart: unless-stopped
     ports:
       - "8080:8080"   # data-plane egress API (/v1/chat)

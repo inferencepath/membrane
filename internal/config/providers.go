@@ -34,20 +34,21 @@ const (
 	// workload identity; no stored secret.
 	AuthAzureManagedIdentity = "azure_managed_identity"
 	// AuthGCPApplicationDefault gets an OAuth token from GCP Application
-	// Default Credentials; no stored secret. Supported only by the gemini
-	// family, for Vertex AI.
+	// Default Credentials; no stored secret. Supported by the gemini,
+	// anthropic and local families, for Vertex AI.
 	AuthGCPApplicationDefault = "gcp_application_default"
 	// AuthGCPServiceAccountKey uses a service account JSON key resolved from
-	// SecretRef to mint Vertex AI OAuth bearer tokens.
+	// SecretRef to mint Vertex AI OAuth bearer tokens. Supported by the
+	// gemini, anthropic and local families.
 	AuthGCPServiceAccountKey = "gcp_service_account_key"
 )
 
 // validAuthModes maps each family to the auth modes it accepts.
 var validAuthModes = map[types.ProviderID]map[string]struct{}{
 	ProviderOpenAI:      {AuthAPIKey: {}},
-	ProviderAnthropic:   {AuthAPIKey: {}},
+	ProviderAnthropic:   {AuthAPIKey: {}, AuthGCPApplicationDefault: {}, AuthGCPServiceAccountKey: {}},
 	ProviderGemini:      {AuthAPIKey: {}, AuthGCPApplicationDefault: {}, AuthGCPServiceAccountKey: {}},
-	ProviderLocal:       {AuthAPIKey: {}},
+	ProviderLocal:       {AuthAPIKey: {}, AuthGCPApplicationDefault: {}, AuthGCPServiceAccountKey: {}},
 	ProviderAzureOpenAI: {AuthAPIKey: {}, AuthAzureManagedIdentity: {}},
 	ProviderBedrock:     {AuthAPIKey: {}, AuthAWSBearerTokenBedrock: {}, AuthAWSDefaultChain: {}, AuthAWSAssumeRole: {}},
 }
@@ -64,7 +65,8 @@ func AuthModeUsesSecret(mode string) bool {
 }
 
 // GeminiVertex reports whether an auth mode uses the Vertex AI surface rather
-// than Google AI Studio.
+// than the vendor's own API (AI Studio for gemini, api.anthropic.com for
+// anthropic, the configured endpoint for local).
 func GeminiVertex(mode string) bool {
 	return mode == AuthGCPApplicationDefault || mode == AuthGCPServiceAccountKey
 }
@@ -237,7 +239,40 @@ func parseProvider(p providerEntryYAML) (ProviderConfig, error) {
 		if err := validateBedrockModelRegions(models, p.Region); err != nil {
 			return ProviderConfig{}, err
 		}
-	case ProviderOpenAI, ProviderLocal, ProviderAnthropic:
+	case ProviderAnthropic:
+		// Claude on Vertex AI is project/location-scoped and defaults to the
+		// Vertex host; an endpoint, if set, is a private Vertex endpoint.
+		if GeminiVertex(authMode) {
+			if p.Project == "" || p.Location == "" {
+				return ProviderConfig{}, fmt.Errorf("anthropic on vertex (%s) requires project and location", authMode)
+			}
+			if strings.Contains(p.Endpoint, "api.anthropic.com") {
+				return ProviderConfig{}, fmt.Errorf("anthropic on vertex (%s) must not use the api.anthropic.com endpoint; leave endpoint empty or set a private Vertex endpoint", authMode)
+			}
+		} else {
+			if p.Endpoint == "" {
+				return ProviderConfig{}, fmt.Errorf("%s requires endpoint", family)
+			}
+			if p.Project != "" || p.Location != "" {
+				return ProviderConfig{}, fmt.Errorf("anthropic project/location are only valid with a Vertex AI auth_mode (gcp_application_default, gcp_service_account_key)")
+			}
+		}
+	case ProviderLocal:
+		// With a GCP auth mode, local reaches Vertex AI's OpenAI-compatible
+		// endpoint for the project/location (endpoint optional: a private one).
+		if GeminiVertex(authMode) {
+			if p.Project == "" || p.Location == "" {
+				return ProviderConfig{}, fmt.Errorf("local on vertex (%s) requires project and location", authMode)
+			}
+		} else {
+			if p.Endpoint == "" {
+				return ProviderConfig{}, fmt.Errorf("%s requires endpoint", family)
+			}
+			if p.Project != "" || p.Location != "" {
+				return ProviderConfig{}, fmt.Errorf("local project/location are only valid with a Vertex AI auth_mode (gcp_application_default, gcp_service_account_key)")
+			}
+		}
+	case ProviderOpenAI:
 		if p.Endpoint == "" {
 			return ProviderConfig{}, fmt.Errorf("%s requires endpoint", family)
 		}

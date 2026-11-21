@@ -26,8 +26,14 @@ import (
 // opEndpoint builds the deployment-scoped URL for an operation sub-path such as
 // "/embeddings" or "/audio/speech", appending the pinned api-version.
 func (a *Adapter) opEndpoint(op string) string {
+	return a.opEndpointVersion(op, a.apiVersion)
+}
+
+// opEndpointVersion is opEndpoint with an explicit api-version, for operations
+// Azure serves only on a newer version (audio in chat completions).
+func (a *Adapter) opEndpointVersion(op, version string) string {
 	u := fmt.Sprintf("%s/openai/deployments/%s%s", a.baseURL, url.PathEscape(a.deployment), op)
-	return u + "?api-version=" + url.QueryEscape(a.apiVersion)
+	return u + "?api-version=" + url.QueryEscape(version)
 }
 
 // applyAuth attaches the Egress Identity as an api-key header or Entra bearer
@@ -58,7 +64,11 @@ func opBody(req providers.Request) ([]byte, error) {
 }
 
 func (a *Adapter) newJSONRequest(ctx context.Context, op string, body []byte, id providers.EgressIdentity, accept string) (*http.Request, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.opEndpoint(op), bytes.NewReader(body))
+	return a.newJSONRequestURL(ctx, a.opEndpoint(op), body, id, accept)
+}
+
+func (a *Adapter) newJSONRequestURL(ctx context.Context, endpoint string, body []byte, id providers.EgressIdentity, accept string) (*http.Request, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
