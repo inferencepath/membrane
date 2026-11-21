@@ -1,68 +1,74 @@
 package console
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 	"strconv"
 )
 
-// testChatRequest is the Test Pathway payload: a Caller Key and the raw logical
-// chat request. The key is forwarded as given and never stored or logged.
-type testChatRequest struct {
-	CallerKey string          `json:"callerKey"`
-	Request   json.RawMessage `json:"request"`
+const (
+	testCallerKeyHeader = "X-Membrane-Console-Caller-Key"
+	maxTestBodyBytes    = 26 << 20 // accommodates the 25 MiB transcription limit
+)
+
+// testRoutes is deliberately closed: Console test requests can reach only a
+// Community data-plane operation, never an arbitrary local URL or path.
+var testRoutes = map[string]string{
+	"chat":                "/v1/chat",
+	"embeddings":          "/v1/embeddings",
+	"rerank":              "/v1/rerank",
+	"responses":           "/v1/responses",
+	"image_generation":    "/v1/images/generations",
+	"audio_transcription": "/v1/audio/transcriptions",
+	"audio_speech":        "/v1/audio/speech",
+	"moderations":         "/v1/moderations",
 }
 
-// handleTestChat proxies a sample request to the data-plane /v1/chat with an
-// operator-supplied Caller Key. The console is an ordinary client of the
-// egress path: it relays the response as is, including the generic 403 and
-// streamed bodies. The admin audit records the action but not the key.
-func (c *Console) handleTestChat(w http.ResponseWriter, r *http.Request) {
+// handleTestPathway proxies a raw operation request to the corresponding
+// Community data-plane route. The Caller Key is supplied in a Console-only
+// header and is never forwarded as a request field, stored, or logged. This
+// supports both JSON operations and the multipart transcription upload.
+func (c *Console) handleTestPathway(w http.ResponseWriter, r *http.Request) {
 	if c.cfg.ChatBaseURL == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": "test pathway is not available (data-plane address unknown)",
 		})
 		return
 	}
-	body, ok := readEditBody(w, r)
+	operation := r.PathValue("operation")
+	route, ok := testRoutes[operation]
 	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown Community operation"})
 		return
 	}
-	var tr testChatRequest
-	if err := json.Unmarshal(body, &tr); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "malformed test request"})
-		return
-	}
-	if tr.CallerKey == "" {
+	callerKey := r.Header.Get(testCallerKeyHeader)
+	if callerKey == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a Caller Key is required"})
 		return
 	}
-	if len(tr.Request) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a chat request is required"})
-		return
-	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxTestBodyBytes)
 
 	up, err := http.NewRequestWithContext(r.Context(), http.MethodPost,
-		c.cfg.ChatBaseURL+"/v1/chat", bytes.NewReader(tr.Request))
+		c.cfg.ChatBaseURL+route, r.Body)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not build upstream request"})
 		return
 	}
-	up.Header.Set("Content-Type", "application/json")
-	up.Header.Set("Authorization", "Bearer "+tr.CallerKey)
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		up.Header.Set("Content-Type", contentType)
+	}
+	up.Header.Set("Authorization", "Bearer "+callerKey)
 
 	// No client timeout, since streams may be long-lived; the request context
 	// handles cancellation.
 	resp, err := http.DefaultClient.Do(up)
 	if err != nil {
-		c.recordAdmin(r, "test:chat", "error")
+		c.recordAdmin(r, "test:"+operation, "error")
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "data-plane request failed"})
 		return
 	}
 	defer resp.Body.Close()
 
-	c.recordAdmin(r, "test:chat", "http_"+strconv.Itoa(resp.StatusCode))
+	c.recordAdmin(r, "test:"+operation, "http_"+strconv.Itoa(resp.StatusCode))
 
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)

@@ -118,7 +118,7 @@ func New(cfg Config) *Console {
 	mux.HandleFunc("POST /api/console/pathways", c.handlePathwayCreate)
 	mux.HandleFunc("POST /api/console/callers", c.handleCallerCreate)
 	mux.HandleFunc("DELETE /api/console/callers/{keyId}", c.handleCallerDelete)
-	mux.HandleFunc("POST /api/console/test/chat", c.handleTestChat)
+	mux.HandleFunc("POST /api/console/test/{operation}", c.handleTestPathway)
 	mux.HandleFunc("GET /api/console/secrets", c.handleSecretsList)
 	mux.HandleFunc("PUT /api/console/secrets/{name}", c.handleSecretSet)
 	mux.HandleFunc("DELETE /api/console/secrets/{name}", c.handleSecretDelete)

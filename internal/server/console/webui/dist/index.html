@@ -1794,48 +1794,105 @@
 
     async function test() {
       const caps = await api('/api/console/config/pathways').catch(() => ({ pathways: [] }));
-      const opts = (caps.pathways || []).map((c) => `<option value="${attr(c.pathway)}">${esc(c.pathway)}</option>`).join('')
-        || '<option value="chat">chat</option>';
+      const pathways = caps.pathways || [];
+      const opts = pathways.map((c) =>
+        `<option value="${attr(c.pathway)}" data-operation="${attr(c.operation || 'chat')}">${esc(c.pathway)} · ${esc(c.operation || 'chat')}</option>`).join('')
+        || '<option value="chat" data-operation="chat">chat · chat</option>';
       return `
-        <h2>Test Pathway <span class="muted">(proxies to /v1/chat with a Caller Key)</span></h2>
+        <h2>Test Pathway <span class="muted">(calls the selected Community operation with a Caller Key)</span></h2>
         <p class="muted">The console calls the data plane as a client. Responses are provider-neutral unless
           you set Reveal; an unauthorized key returns the generic 403.</p>
         <div style="display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;max-width:720px">
           <label>Caller Key</label><input id="t-key" placeholder="&lt;key_id&gt;.&lt;secret&gt;" autocomplete="off">
           <label>Pathway</label><select id="t-cap">${opts}</select>
-          <label>Prompt</label><textarea id="t-prompt" style="height:100px">Say hello in one short sentence.</textarea>
-          <label>Options</label><div>
-            <label style="margin-right:16px"><input type="checkbox" id="t-reveal"> Reveal (provider family + model)</label>
-            <label><input type="checkbox" id="t-stream"> Stream</label></div>
+          <div id="t-operation-fields" style="display:contents">
+            <label data-test-for="chat image_generation">Prompt</label>
+            <textarea id="t-prompt" data-test-for="chat image_generation" style="height:100px">Say hello in one short sentence.</textarea>
+            <label data-test-for="embeddings moderations">Input</label>
+            <textarea id="t-input" data-test-for="embeddings moderations" style="height:100px">A short test input.</textarea>
+            <label data-test-for="rerank">Query</label><input id="t-query" data-test-for="rerank" value="What is Membrane?">
+            <label data-test-for="rerank">Documents</label>
+            <textarea id="t-documents" data-test-for="rerank" style="height:100px">Membrane routes AI requests.
+InferencePath provides AI infrastructure.</textarea>
+            <label data-test-for="responses">Input</label><textarea id="t-response-input" data-test-for="responses" style="height:100px">Say hello in one short sentence.</textarea>
+            <label data-test-for="responses">Instructions</label><input id="t-instructions" data-test-for="responses" placeholder="Optional">
+            <label data-test-for="audio_transcription">Audio file</label><input id="t-file" data-test-for="audio_transcription" type="file" accept="audio/*">
+            <label data-test-for="audio_transcription">Language</label><input id="t-language" data-test-for="audio_transcription" placeholder="Optional, e.g. en">
+            <label data-test-for="audio_speech">Text</label><textarea id="t-speech-input" data-test-for="audio_speech" style="height:100px">Hello from Membrane.</textarea>
+            <label data-test-for="audio_speech">Voice</label><input id="t-voice" data-test-for="audio_speech" value="alloy">
+            <label data-test-for="audio_speech">Format</label><select id="t-format" data-test-for="audio_speech"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option></select>
+            <label data-test-for="image_generation">Size</label><input id="t-size" data-test-for="image_generation" value="1024x1024">
+            <label>Options</label><div>
+              <label style="margin-right:16px"><input type="checkbox" id="t-reveal"> Reveal (provider family + model)</label>
+              <label data-test-for="chat responses"><input type="checkbox" id="t-stream"> Stream</label></div>
+          </div>
         </div>
         <div style="margin-top:16px"><button data-act="run-test">Send</button></div>
         <h2 style="margin-top:24px">Response</h2>
         <pre id="t-out" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;min-height:80px;white-space:pre-wrap;overflow:auto"></pre>`;
     }
 
+    function testOperation() {
+      const selected = document.getElementById('t-cap').selectedOptions[0];
+      return selected.dataset.operation || 'chat';
+    }
+
+    function syncTestOperation() {
+      const operation = testOperation();
+      document.querySelectorAll('[data-test-for]').forEach((el) => {
+        const visible = el.dataset.testFor.split(' ').includes(operation);
+        el.style.display = visible ? '' : 'none';
+      });
+      const stream = document.getElementById('t-stream');
+      if (stream) stream.checked = false;
+    }
+
     async function runTest() {
       const out = document.getElementById('t-out');
       out.textContent = '';
       const key = document.getElementById('t-key').value.trim();
-      const stream = document.getElementById('t-stream').checked;
-      const request = {
-        pathway: document.getElementById('t-cap').value,
-        messages: [{ role: 'user', content: document.getElementById('t-prompt').value }],
-        reveal: document.getElementById('t-reveal').checked,
-        stream,
-      };
+      const pathway = document.getElementById('t-cap').value;
+      const operation = testOperation();
+      const reveal = document.getElementById('t-reveal').checked;
+      const stream = (operation === 'chat' || operation === 'responses') && document.getElementById('t-stream').checked;
       let res;
       try {
-        // Use rawFetch so data-plane 401/403 responses (bad Caller Key) do not
-        // trigger the admin-login interceptor attached to window.fetch.
-        const headers = { 'Content-Type': 'application/json' };
+        const headers = { 'X-Membrane-Console-Caller-Key': key };
         if (consoleToken) headers['X-Console-Token'] = consoleToken;
-        res = await rawFetch('/api/console/test/chat',
-          { method: 'POST', headers,
-            body: JSON.stringify({ callerKey: key, request }) });
+        let body;
+        if (operation === 'audio_transcription') {
+          const file = document.getElementById('t-file').files[0];
+          if (!file) { out.textContent = 'select an audio file first'; return; }
+          body = new FormData();
+          body.append('pathway', pathway); body.append('file', file);
+          const language = document.getElementById('t-language').value.trim();
+          if (language) body.append('language', language);
+          if (reveal) body.append('reveal', 'true');
+        } else {
+          headers['Content-Type'] = 'application/json';
+          let request;
+          if (operation === 'chat') request = { pathway, messages: [{ role: 'user', content: document.getElementById('t-prompt').value }], reveal, stream };
+          else if (operation === 'embeddings') request = { pathway, input: document.getElementById('t-input').value, reveal };
+          else if (operation === 'rerank') request = { pathway, query: document.getElementById('t-query').value, documents: document.getElementById('t-documents').value.split('\n').map((v) => v.trim()).filter(Boolean), reveal };
+          else if (operation === 'responses') request = { pathway, input: document.getElementById('t-response-input').value, instructions: document.getElementById('t-instructions').value.trim() || undefined, reveal, stream };
+          else if (operation === 'image_generation') request = { pathway, prompt: document.getElementById('t-prompt').value, size: document.getElementById('t-size').value.trim() || undefined, reveal };
+          else if (operation === 'audio_speech') request = { pathway, input: document.getElementById('t-speech-input').value, voice: document.getElementById('t-voice').value.trim(), format: document.getElementById('t-format').value, reveal };
+          else request = { pathway, input: document.getElementById('t-input').value, reveal };
+          body = JSON.stringify(request);
+        }
+        res = await rawFetch('/api/console/test/' + encodeURIComponent(operation), { method: 'POST', headers, body });
       } catch (e) { out.textContent = 'request failed: ' + e.message; return; }
+      if (operation === 'audio_speech' && res.ok) {
+        const url = URL.createObjectURL(await res.blob());
+        out.innerHTML = '';
+        const audio = document.createElement('audio'); audio.controls = true; audio.src = url;
+        out.append('Audio response: ', audio);
+        return;
+      }
       if (!stream) {
-        out.textContent = JSON.stringify(await res.json().catch(() => ({})), null, 2);
+        const text = await res.text();
+        try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+        catch (_) { out.textContent = text; }
         return;
       }
       // Stream: append SSE chunks as they arrive.
@@ -2008,6 +2065,13 @@
           callerDraft = newCallerDraft(nm.value || '');
           renderCallerDraft();
         });
+      }
+      if (name === 'test') {
+        const pathway = document.getElementById('t-cap');
+        if (pathway) {
+          pathway.addEventListener('change', syncTestOperation);
+          syncTestOperation();
+        }
       }
     }
 

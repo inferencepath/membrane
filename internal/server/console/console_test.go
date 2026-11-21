@@ -1,9 +1,11 @@
 package console_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -448,6 +450,18 @@ func post(t *testing.T, h http.Handler, path, body, remoteAddr string) *httptest
 	return rec
 }
 
+func postWithHeaders(t *testing.T, h http.Handler, path string, body io.Reader, remoteAddr string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, body)
+	req.RemoteAddr = remoteAddr
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestEditReadReturnsRawAndVersion(t *testing.T) {
 	h := newConsoleWithEditor(stubEditor{})
 	rec := get(t, h, "/api/console/edit/permeability", "127.0.0.1:1", nil)
@@ -602,7 +616,7 @@ func TestAdminAuditRecordsApplies(t *testing.T) {
 
 func TestTestPathwayUnavailableWhenNoBaseURL(t *testing.T) {
 	h := newConsoleWithEditor(stubEditor{}) // no ChatBaseURL
-	rec := post(t, h, "/api/console/test/chat", `{"callerKey":"k","request":{}}`, "127.0.0.1:1")
+	rec := post(t, h, "/api/console/test/chat", `{}`, "127.0.0.1:1")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("test without base URL = %d, want 503", rec.Code)
 	}
@@ -613,47 +627,70 @@ func TestTestPathwayValidation(t *testing.T) {
 		Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry(), ChatBaseURL: "http://127.0.0.1:9",
 	}).Handler()
 	// Missing caller key.
-	rec := post(t, h, "/api/console/test/chat", `{"request":{"pathway":"chat"}}`, "127.0.0.1:1")
+	rec := post(t, h, "/api/console/test/chat", `{"pathway":"chat"}`, "127.0.0.1:1")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing key = %d, want 400", rec.Code)
 	}
-	// Malformed body.
-	bad := post(t, h, "/api/console/test/chat", `{not json`, "127.0.0.1:1")
-	if bad.Code != http.StatusBadRequest {
-		t.Fatalf("malformed test = %d, want 400", bad.Code)
+	// Unsupported operation is rejected before an upstream request is made.
+	bad := postWithHeaders(t, h, "/api/console/test/not-an-operation", strings.NewReader(`{}`), "127.0.0.1:1",
+		map[string]string{"X-Membrane-Console-Caller-Key": "k"})
+	if bad.Code != http.StatusNotFound {
+		t.Fatalf("unsupported operation = %d, want 404", bad.Code)
 	}
 }
 
-func TestTestPathwayProxiesToDataPlane(t *testing.T) {
-	// A fake data plane that echoes the Authorization header and the request.
-	var gotAuth, gotBody string
+func TestTestPathwayProxiesAllCommunityOperations(t *testing.T) {
+	type received struct {
+		path, auth, contentType, body string
+	}
+	var requests []received
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
 		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
+		requests = append(requests, received{r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type"), string(b)})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"pathway":"chat","message":{"role":"assistant","content":"hi"}}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer upstream.Close()
 
 	h := console.New(console.Config{
 		Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry(), ChatBaseURL: upstream.URL,
 	}).Handler()
-	rec := post(t, h, "/api/console/test/chat",
-		`{"callerKey":"ck_demo.secret","request":{"pathway":"chat","messages":[{"role":"user","content":"hi"}]}}`,
-		"127.0.0.1:1")
+	routes := map[string]string{
+		"chat": "/v1/chat", "embeddings": "/v1/embeddings", "rerank": "/v1/rerank",
+		"responses": "/v1/responses", "image_generation": "/v1/images/generations",
+		"audio_transcription": "/v1/audio/transcriptions", "audio_speech": "/v1/audio/speech",
+		"moderations": "/v1/moderations",
+	}
+	for operation, route := range routes {
+		rec := postWithHeaders(t, h, "/api/console/test/"+operation, strings.NewReader(`{"pathway":"demo"}`), "127.0.0.1:1",
+			map[string]string{"Content-Type": "application/json", "X-Membrane-Console-Caller-Key": "ck_demo.secret"})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s proxy = %d, want 200", operation, rec.Code)
+		}
+		got := requests[len(requests)-1]
+		if got.path != route || got.auth != "Bearer ck_demo.secret" || got.contentType != "application/json" || got.body != `{"pathway":"demo"}` {
+			t.Fatalf("%s upstream = %+v", operation, got)
+		}
+	}
+
+	var multipartBody bytes.Buffer
+	writer := multipart.NewWriter(&multipartBody)
+	_ = writer.WriteField("pathway", "transcribe")
+	part, err := writer.CreateFormFile("file", "sample.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("audio"))
+	_ = writer.Close()
+	rec := postWithHeaders(t, h, "/api/console/test/audio_transcription", &multipartBody, "127.0.0.1:1",
+		map[string]string{"Content-Type": writer.FormDataContentType(), "X-Membrane-Console-Caller-Key": "ck_demo.secret"})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("proxy = %d, want 200", rec.Code)
+		t.Fatalf("multipart proxy = %d, want 200", rec.Code)
 	}
-	if gotAuth != "Bearer ck_demo.secret" {
-		t.Fatalf("upstream Authorization = %q", gotAuth)
-	}
-	if !strings.Contains(gotBody, `"pathway":"chat"`) {
-		t.Fatalf("upstream body = %q", gotBody)
-	}
-	if !strings.Contains(rec.Body.String(), `"content":"hi"`) {
-		t.Fatalf("relayed body missing: %s", rec.Body.String())
+	got := requests[len(requests)-1]
+	if got.path != "/v1/audio/transcriptions" || got.contentType != writer.FormDataContentType() || !strings.Contains(got.body, `name="file"`) {
+		t.Fatalf("multipart upstream = %+v", got)
 	}
 }
 
@@ -663,8 +700,8 @@ func TestTestPathwayUpstreamError(t *testing.T) {
 	h := console.New(console.Config{
 		Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry(), ChatBaseURL: "http://127.0.0.1:1",
 	}).Handler()
-	rec := post(t, h, "/api/console/test/chat",
-		`{"callerKey":"k","request":{"pathway":"chat"}}`, "127.0.0.1:1")
+	rec := postWithHeaders(t, h, "/api/console/test/chat", strings.NewReader(`{"pathway":"chat"}`), "127.0.0.1:1",
+		map[string]string{"X-Membrane-Console-Caller-Key": "k"})
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("upstream error = %d, want 502", rec.Code)
 	}
@@ -685,8 +722,8 @@ func TestTestPathwayRelaysStream(t *testing.T) {
 	h := console.New(console.Config{
 		Status: stubStatus{ready: true}, Metrics: metrics.NewRegistry(), ChatBaseURL: upstream.URL,
 	}).Handler()
-	rec := post(t, h, "/api/console/test/chat",
-		`{"callerKey":"k","request":{"pathway":"chat","stream":true}}`, "127.0.0.1:1")
+	rec := postWithHeaders(t, h, "/api/console/test/chat", strings.NewReader(`{"pathway":"chat","stream":true}`), "127.0.0.1:1",
+		map[string]string{"X-Membrane-Console-Caller-Key": "k"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stream relay = %d", rec.Code)
 	}
