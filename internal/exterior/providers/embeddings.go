@@ -86,3 +86,9 @@ type ResponsesProvider interface {
 type MultimodalProvider interface {
 	CompleteMultimodal(ctx context.Context, req Request, id EgressIdentity) (types.CanonicalMultimodal, error)
 }
+
+// ConversationProvider is an optional adapter capability for speech-to-speech
+// audio conversations.
+type ConversationProvider interface {
+	Converse(ctx context.Context, req Request, id EgressIdentity) (types.CanonicalConversation, error)
+}

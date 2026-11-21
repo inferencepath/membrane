@@ -2,6 +2,7 @@ package transporter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/inferencepath/membrane/internal/exterior/providers"
@@ -26,6 +27,69 @@ type TranscriptionTransporter interface {
 // incrementally via emit (first chunk is the Head).
 type SpeechTransporter interface {
 	TransportSpeech(ctx context.Context, req scrub.SanitizedRequest, emit func(types.SpeechChunk) error) error
+}
+
+type ConversationTransporter interface {
+	TransportConversation(ctx context.Context, req scrub.SanitizedRequest) (types.CanonicalConversation, error)
+}
+
+func (m *Membrane) TransportConversation(ctx context.Context, sr scrub.SanitizedRequest) (types.CanonicalConversation, error) {
+	capID := sr.Pathway()
+	tries := m.attempts(ctx, capID)
+	if len(tries) == 0 {
+		return types.CanonicalConversation{}, ErrNoProvider
+	}
+	lastErr := error(ErrNoProvider)
+	skipped := 0
+	for _, at := range tries {
+		t := at.t
+		if !t.health.available(m.now(), m.backoff) {
+			skipped++
+			continue
+		}
+		cp, ok := t.adapter.(providers.ConversationProvider)
+		if !ok {
+			return types.CanonicalConversation{}, providers.ErrOperationUnsupported
+		}
+		id, err := m.identity(t)
+		if err != nil {
+			t.health.recordFailure(m.now(), m.backoff)
+			m.onFailover(capID, t)
+			lastErr = err
+			continue
+		}
+		cctx := ctx
+		var cancel context.CancelFunc
+		if t.timeoutTotal > 0 {
+			cctx, cancel = context.WithTimeout(ctx, t.timeoutTotal)
+		}
+		resp, err := cp.Converse(cctx, providers.Request{Model: at.model, Payload: sr.Payload()}, id)
+		if cancel != nil {
+			cancel()
+		}
+		if err == nil {
+			t.health.recordSuccess()
+			m.onHealthy(capID, t)
+			return resp, nil
+		}
+		if ctx.Err() != nil {
+			return types.CanonicalConversation{}, ctx.Err()
+		}
+		if errors.Is(err, providers.ErrFormatUnsupported) {
+			lastErr = err
+			continue
+		}
+		if classify(err) == outcomeNoFailover {
+			return types.CanonicalConversation{}, err
+		}
+		t.health.recordFailure(m.now(), m.backoff)
+		m.onFailover(capID, t)
+		lastErr = err
+	}
+	if skipped > 0 && lastErr == ErrNoProvider {
+		return types.CanonicalConversation{}, fmt.Errorf("transporter: all targets unavailable (circuit open): %w", ErrNoProvider)
+	}
+	return types.CanonicalConversation{}, lastErr
 }
 
 // TransportModerations performs a non-streaming moderations crossing with
@@ -213,6 +277,10 @@ func (Stub) TransportModerations(_ context.Context, _ scrub.SanitizedRequest) (t
 // TransportTranscription on the stub always returns ErrNotImplemented.
 func (Stub) TransportTranscription(_ context.Context, _ scrub.SanitizedRequest) (types.CanonicalTranscription, error) {
 	return types.CanonicalTranscription{}, ErrNotImplemented
+}
+
+func (Stub) TransportConversation(_ context.Context, _ scrub.SanitizedRequest) (types.CanonicalConversation, error) {
+	return types.CanonicalConversation{}, ErrNotImplemented
 }
 
 // TransportSpeech on the stub always returns ErrNotImplemented.

@@ -20,6 +20,7 @@ var testRoutes = map[string]string{
 	"image_generation":    "/v1/images/generations",
 	"audio_transcription": "/v1/audio/transcriptions",
 	"audio_speech":        "/v1/audio/speech",
+	"audio_conversation":  "/v1/audio/conversations",
 	"moderations":         "/v1/moderations",
 	"multimodal_chat":     "/v1/multimodal/chat",
 }

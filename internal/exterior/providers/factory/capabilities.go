@@ -30,13 +30,13 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationResponses, types.OperationImageGeneration,
 		types.OperationAudioTranscription, types.OperationAudioSpeech,
-		types.OperationModerations, types.OperationMultimodalChat,
+		types.OperationModerations, types.OperationMultimodalChat, types.OperationAudioConversation,
 	),
 	config.ProviderLocal: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationResponses, types.OperationImageGeneration,
 		types.OperationAudioTranscription, types.OperationAudioSpeech,
-		types.OperationModerations, types.OperationMultimodalChat,
+		types.OperationModerations, types.OperationMultimodalChat, types.OperationAudioConversation,
 	),
 	config.ProviderAnthropic: opSet(
 		types.OperationChat, types.OperationResponses, types.OperationMultimodalChat,
@@ -109,6 +109,9 @@ func AdapterSupports(adapter providers.Provider, op types.Operation) bool {
 		return ok
 	case types.OperationMultimodalChat:
 		_, ok := adapter.(providers.MultimodalProvider)
+		return ok
+	case types.OperationAudioConversation:
+		_, ok := adapter.(providers.ConversationProvider)
 		return ok
 	default:
 		return false

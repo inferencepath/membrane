@@ -149,6 +149,26 @@ func ScrubMultimodal(resp types.CanonicalMultimodal, spec permeability.Spec, pat
 	return out, nil
 }
 
+func ScrubConversation(resp types.CanonicalConversation, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalConversation, error) {
+	ds, ok := spec.Pathways[pathway]
+	if !ok {
+		return types.CanonicalConversation{}, fmt.Errorf("scrub: no permeability for pathway %q", pathway)
+	}
+	out := types.CanonicalConversation{
+		PathwayID: pathway, Audio: resp.Audio, Format: resp.Format,
+		Transcript: resp.Transcript, Usage: resp.Usage,
+	}
+	if reveal {
+		if revealed(ds.Inbound.OnReveal, revealFieldProvider) {
+			out.Provider = resp.Provider
+		}
+		if revealed(ds.Inbound.OnReveal, revealFieldModel) {
+			out.Model = resp.Model
+		}
+	}
+	return out, nil
+}
+
 // RevealAllows reports whether field ("provider" or "model") is in the
 // Pathway's on_reveal set. Handlers that do not return a JSON body, such as
 // audio_speech, which sends provider and model as headers, use it to apply the

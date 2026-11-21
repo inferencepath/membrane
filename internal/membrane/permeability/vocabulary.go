@@ -61,6 +61,10 @@ var operationVocab = map[types.Operation]directionVocab{
 		outbound: set("input"),
 		inbound:  set("results", "provider", "model"),
 	},
+	types.OperationAudioConversation: {
+		outbound: set("file", "voice", "format", "instructions"),
+		inbound:  set("audio", "transcript", "usage", "provider", "model"),
+	},
 	// Multimodal media remains closed unless each media field is explicitly
 	// allowed by the Pathway policy.
 	types.OperationMultimodalChat: {

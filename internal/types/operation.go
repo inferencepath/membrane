@@ -24,6 +24,8 @@ const (
 	OperationAudioSpeech Operation = "audio_speech"
 	// OperationModerations classifies input against moderation categories.
 	OperationModerations Operation = "moderations"
+	// OperationAudioConversation accepts spoken input and returns a spoken reply.
+	OperationAudioConversation Operation = "audio_conversation"
 	// OperationMultimodalChat accepts text, image, and audio content parts.
 	OperationMultimodalChat Operation = "multimodal_chat"
 )
@@ -42,6 +44,7 @@ var operationRoutes = map[Operation]string{
 	OperationAudioTranscription: "/v1/audio/transcriptions",
 	OperationAudioSpeech:        "/v1/audio/speech",
 	OperationModerations:        "/v1/moderations",
+	OperationAudioConversation:  "/v1/audio/conversations",
 	OperationMultimodalChat:     "/v1/multimodal/chat",
 }
 
@@ -56,6 +59,7 @@ func AllOperations() []Operation {
 		OperationAudioTranscription,
 		OperationAudioSpeech,
 		OperationModerations,
+		OperationAudioConversation,
 		OperationMultimodalChat,
 	}
 }

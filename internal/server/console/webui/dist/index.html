@@ -1818,6 +1818,10 @@ InferencePath provides AI infrastructure.</textarea>
             <label data-test-for="responses">Instructions</label><input id="t-instructions" data-test-for="responses" placeholder="Optional">
             <label data-test-for="audio_transcription">Audio file</label><input id="t-file" data-test-for="audio_transcription" type="file" accept="audio/*">
             <label data-test-for="audio_transcription">Language</label><input id="t-language" data-test-for="audio_transcription" placeholder="Optional, e.g. en">
+            <label data-test-for="audio_conversation">Audio file</label><input id="t-conversation-file" data-test-for="audio_conversation" type="file" accept="audio/wav,audio/mpeg">
+            <label data-test-for="audio_conversation">Voice</label><input id="t-conversation-voice" data-test-for="audio_conversation" value="alloy">
+            <label data-test-for="audio_conversation">Reply format</label><select id="t-conversation-format" data-test-for="audio_conversation"><option value="wav">WAV</option><option value="mp3">MP3</option><option value="opus">Opus</option></select>
+            <label data-test-for="audio_conversation">Instructions</label><input id="t-conversation-instructions" data-test-for="audio_conversation" placeholder="Optional">
             <label data-test-for="audio_speech">Text</label><textarea id="t-speech-input" data-test-for="audio_speech" style="height:100px">Hello from Membrane.</textarea>
             <label data-test-for="audio_speech">Voice</label><input id="t-voice" data-test-for="audio_speech" value="alloy">
             <label data-test-for="audio_speech">Format</label><select id="t-format" data-test-for="audio_speech"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option></select>
@@ -1871,13 +1875,20 @@ InferencePath provides AI infrastructure.</textarea>
         const headers = { 'X-Membrane-Console-Caller-Key': key };
         if (consoleToken) headers['X-Console-Token'] = consoleToken;
         let body;
-        if (operation === 'audio_transcription') {
-          const file = document.getElementById('t-file').files[0];
+        if (operation === 'audio_transcription' || operation === 'audio_conversation') {
+          const file = document.getElementById(operation === 'audio_transcription' ? 't-file' : 't-conversation-file').files[0];
           if (!file) { out.textContent = 'select an audio file first'; return; }
           body = new FormData();
           body.append('pathway', pathway); body.append('file', file);
-          const language = document.getElementById('t-language').value.trim();
-          if (language) body.append('language', language);
+          if (operation === 'audio_transcription') {
+            const language = document.getElementById('t-language').value.trim();
+            if (language) body.append('language', language);
+          } else {
+            body.append('voice', document.getElementById('t-conversation-voice').value.trim());
+            body.append('response_format', document.getElementById('t-conversation-format').value);
+            const instructions = document.getElementById('t-conversation-instructions').value.trim();
+            if (instructions) body.append('instructions', instructions);
+          }
           if (reveal) body.append('reveal', 'true');
         } else {
           headers['Content-Type'] = 'application/json';

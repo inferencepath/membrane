@@ -31,6 +31,7 @@ import (
 	"github.com/inferencepath/membrane/internal/server"
 	"github.com/inferencepath/membrane/internal/server/chat"
 	"github.com/inferencepath/membrane/internal/server/console"
+	"github.com/inferencepath/membrane/internal/server/conversation"
 	"github.com/inferencepath/membrane/internal/server/embeddings"
 	"github.com/inferencepath/membrane/internal/server/images"
 	"github.com/inferencepath/membrane/internal/server/moderations"
@@ -207,6 +208,7 @@ func Run(args []string, info BuildInfo, opts Options) int {
 	srv.Handle(moderations.Route, moderations.NewReloadable(current, logger, reg, moderations.WithAudit(audits)))
 	srv.Handle(transcription.Route, transcription.NewReloadable(current, logger, reg, transcription.WithAudit(audits)))
 	srv.Handle(speech.Route, speech.NewReloadable(current, logger, reg, speech.WithAudit(audits)))
+	srv.Handle(conversation.Route, conversation.NewReloadable(current, logger, reg, conversation.WithAudit(audits)))
 	srv.Handle(multimodal.Route, multimodal.NewReloadable(current, logger, reg, multimodal.WithAudit(audits)))
 	watchReload(ctx, reloaderFunc(reloadFn), logger)
 

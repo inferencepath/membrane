@@ -660,7 +660,8 @@ func TestTestPathwayProxiesAllCommunityOperations(t *testing.T) {
 		"chat": "/v1/chat", "embeddings": "/v1/embeddings", "rerank": "/v1/rerank",
 		"responses": "/v1/responses", "image_generation": "/v1/images/generations",
 		"audio_transcription": "/v1/audio/transcriptions", "audio_speech": "/v1/audio/speech",
-		"moderations": "/v1/moderations", "multimodal_chat": "/v1/multimodal/chat",
+		"audio_conversation": "/v1/audio/conversations", "moderations": "/v1/moderations",
+		"multimodal_chat": "/v1/multimodal/chat",
 	}
 	for operation, route := range routes {
 		rec := postWithHeaders(t, h, "/api/console/test/"+operation, strings.NewReader(`{"pathway":"demo"}`), "127.0.0.1:1",

@@ -1,5 +1,7 @@
 package types
 
+import "strings"
+
 // Audio API shapes for the audio_speech (text-to-speech) and
 // audio_transcription (speech-to-text) operations.
 
@@ -36,6 +38,44 @@ type SpeechChunk struct {
 	Done        bool
 }
 
+// AudioUpload holds audio bytes and only their validated extension. It prevents
+// client filenames or multipart metadata from reaching an Exterior provider.
+type AudioUpload struct {
+	Ext  string
+	Data []byte
+}
+
+var audioExts = map[string]bool{"flac": true, "mp3": true, "mp4": true, "mpeg": true, "mpga": true, "m4a": true, "ogg": true, "oga": true, "wav": true, "webm": true}
+
+func AudioExt(filename string) string {
+	i := strings.LastIndexByte(filename, '.')
+	if i < 0 {
+		return ""
+	}
+	ext := strings.ToLower(filename[i+1:])
+	if !audioExts[ext] {
+		return ""
+	}
+	return ext
+}
+
+func (u AudioUpload) Filename() string {
+	if u.Ext == "" {
+		return "audio"
+	}
+	return "audio." + u.Ext
+}
+
+func AudioUploadOf(v any) AudioUpload {
+	switch f := v.(type) {
+	case AudioUpload:
+		return f
+	case []byte:
+		return AudioUpload{Data: f}
+	}
+	return AudioUpload{}
+}
+
 // audio_transcription
 
 // TranscriptionRequest is the inbound speech-to-text request. The handler reads
@@ -67,6 +107,37 @@ type CanonicalTranscription struct {
 	Usage     TranscriptionUsage
 	Provider  ProviderID
 	Model     string
+}
+
+// ConversationUsage reports token accounting for a spoken exchange.
+type ConversationUsage struct {
+	InputTokens  int `json:"input_tokens,omitempty"`
+	OutputTokens int `json:"output_tokens,omitempty"`
+}
+
+// CanonicalConversation is a provider-neutral spoken reply and transcript.
+type CanonicalConversation struct {
+	PathwayID  PathwayID
+	Audio      []byte
+	Format     string
+	Transcript string
+	Usage      ConversationUsage
+	Provider   ProviderID
+	Model      string
+}
+
+type ConversationAudio struct {
+	Data   []byte `json:"data"`
+	Format string `json:"format"`
+}
+
+type ConversationResponse struct {
+	Pathway    string            `json:"pathway"`
+	Audio      ConversationAudio `json:"audio"`
+	Transcript string            `json:"transcript"`
+	Usage      ConversationUsage `json:"usage"`
+	Provider   string            `json:"provider,omitempty"`
+	Model      string            `json:"model,omitempty"`
 }
 
 // TranscriptionResponse is the transcription response returned to the Caller.
