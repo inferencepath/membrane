@@ -138,6 +138,10 @@ sign: ## Sign the image + SBOM with cosign IF COSIGN_KEY is set (never fabricate
 smoke: build ## Build + start the binary against the sample config and probe it.
 	EXPECT_VERSION=$(VERSION) ./scripts/smoke.sh
 
+.PHONY: smoke-operations
+smoke-operations: ## Probe all Community operation routes on a running Compose deployment.
+	./scripts/smoke-operations.sh
+
 .PHONY: release
 release: check sbom image sign ## Full release gate: quality + SBOM + image + (optional) signing.
 	@echo "Release artifacts ready for $(VERSION): binary ($(BINARY)), SBOM ($(SBOM_FILE)), image ($(IMAGE))."
