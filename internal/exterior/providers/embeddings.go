@@ -13,6 +13,10 @@ import (
 // the runtime backstop.
 var ErrOperationUnsupported = errors.New("providers: operation not supported by adapter")
 
+// ErrFormatUnsupported allows an adapter to decline a media or reply format
+// before egress. The transporter may try another target in the Pathway.
+var ErrFormatUnsupported = errors.New("providers: media or reply format not supported")
+
 // EmbeddingsProvider is an optional adapter capability for the embeddings
 // operation. If an adapter does not implement it, the Transporter returns
 // ErrOperationUnsupported. Operation capabilities are kept out of Provider so a
@@ -74,4 +78,11 @@ type ResponsesProvider interface {
 	// ResponsesStream performs a streaming responses request, relaying each
 	// incremental event via emit.
 	ResponsesStream(ctx context.Context, req Request, id EgressIdentity, emit func(types.ResponsesStreamChunk) error) error
+}
+
+// MultimodalProvider is an optional adapter capability for multimodal_chat.
+// It receives validated text/image/audio parts and returns a provider-neutral
+// response, optionally including a spoken reply.
+type MultimodalProvider interface {
+	CompleteMultimodal(ctx context.Context, req Request, id EgressIdentity) (types.CanonicalMultimodal, error)
 }

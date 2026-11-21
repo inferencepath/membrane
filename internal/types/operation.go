@@ -24,6 +24,8 @@ const (
 	OperationAudioSpeech Operation = "audio_speech"
 	// OperationModerations classifies input against moderation categories.
 	OperationModerations Operation = "moderations"
+	// OperationMultimodalChat accepts text, image, and audio content parts.
+	OperationMultimodalChat Operation = "multimodal_chat"
 )
 
 // DefaultOperation is the operation assumed when a Pathway declares none.
@@ -40,6 +42,7 @@ var operationRoutes = map[Operation]string{
 	OperationAudioTranscription: "/v1/audio/transcriptions",
 	OperationAudioSpeech:        "/v1/audio/speech",
 	OperationModerations:        "/v1/moderations",
+	OperationMultimodalChat:     "/v1/multimodal/chat",
 }
 
 // AllOperations returns every operation in a stable order.
@@ -53,6 +56,7 @@ func AllOperations() []Operation {
 		OperationAudioTranscription,
 		OperationAudioSpeech,
 		OperationModerations,
+		OperationMultimodalChat,
 	}
 }
 

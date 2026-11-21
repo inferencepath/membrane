@@ -15,6 +15,10 @@ import (
 	"github.com/inferencepath/membrane/internal/types"
 )
 
+// SessionHeader carries an optional opaque stage session identifier. Community
+// stages ignore it; edition-specific stages may use it without crossing it.
+const SessionHeader = "X-Membrane-Session"
+
 // ContentStage is an optional extension point that transforms logical content
 // in place. The default, NoOp, does nothing.
 //
@@ -42,6 +46,10 @@ type RequestContext struct {
 	CallerID string
 	// PathwayID is the logical Pathway for this request.
 	PathwayID string
+	// Operation is the resolved logical operation for this request.
+	Operation string
+	// SessionID is an optional opaque stage session identifier.
+	SessionID string
 	// Messages is the request's conversation turns, rewritten in place.
 	Messages []types.Message
 	// Protection is a content-free marker the stage sets during Ingress. The

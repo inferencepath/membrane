@@ -125,6 +125,30 @@ func ScrubTranscription(resp types.CanonicalTranscription, spec permeability.Spe
 	return out, nil
 }
 
+// ScrubMultimodal rebuilds a multimodal_chat result from its allowed
+// provider-neutral fields. Provider identity is revealed only when both the
+// request and pathway policy permit it.
+func ScrubMultimodal(resp types.CanonicalMultimodal, spec permeability.Spec, pathway types.PathwayID, reveal bool) (types.CanonicalMultimodal, error) {
+	ds, ok := spec.Pathways[pathway]
+	if !ok {
+		return types.CanonicalMultimodal{}, fmt.Errorf("scrub: no permeability for pathway %q", pathway)
+	}
+	out := types.CanonicalMultimodal{
+		PathwayID: pathway, Text: resp.Text, Audio: resp.Audio,
+		AudioFormat: resp.AudioFormat, Transcript: resp.Transcript,
+		FinishReason: resp.FinishReason, Usage: resp.Usage,
+	}
+	if reveal {
+		if revealed(ds.Inbound.OnReveal, revealFieldProvider) {
+			out.Provider = resp.Provider
+		}
+		if revealed(ds.Inbound.OnReveal, revealFieldModel) {
+			out.Model = resp.Model
+		}
+	}
+	return out, nil
+}
+
 // RevealAllows reports whether field ("provider" or "model") is in the
 // Pathway's on_reveal set. Handlers that do not return a JSON body, such as
 // audio_speech, which sends provider and model as headers, use it to apply the

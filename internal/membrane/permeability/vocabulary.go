@@ -61,6 +61,12 @@ var operationVocab = map[types.Operation]directionVocab{
 		outbound: set("input"),
 		inbound:  set("results", "provider", "model"),
 	},
+	// Multimodal media remains closed unless each media field is explicitly
+	// allowed by the Pathway policy.
+	types.OperationMultimodalChat: {
+		outbound: set("messages", "image_input", "audio_input", "audio_output", "max_tokens", "temperature"),
+		inbound:  set("message", "audio", "finish_reason", "usage", "provider", "model"),
+	},
 }
 
 // Vocabulary returns the sorted outbound and inbound field names valid for op,

@@ -56,6 +56,7 @@ type ProviderExchangeEvent struct {
 	RequestID  string
 	CallerID   string
 	PathwayID  string
+	Operation  string
 	Protection ProtectionMarker
 	// Stream reports whether this exchange was a streamed response.
 	Stream bool

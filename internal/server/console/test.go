@@ -7,7 +7,7 @@ import (
 
 const (
 	testCallerKeyHeader = "X-Membrane-Console-Caller-Key"
-	maxTestBodyBytes    = 26 << 20 // accommodates the 25 MiB transcription limit
+	maxTestBodyBytes    = 52 << 20 // accommodates base64-encoded multimodal media
 )
 
 // testRoutes is deliberately closed: Console test requests can reach only a
@@ -21,6 +21,7 @@ var testRoutes = map[string]string{
 	"audio_transcription": "/v1/audio/transcriptions",
 	"audio_speech":        "/v1/audio/speech",
 	"moderations":         "/v1/moderations",
+	"multimodal_chat":     "/v1/multimodal/chat",
 }
 
 // handleTestPathway proxies a raw operation request to the corresponding

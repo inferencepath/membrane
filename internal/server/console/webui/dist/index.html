@@ -1806,8 +1806,8 @@
           <label>Caller Key</label><input id="t-key" placeholder="&lt;key_id&gt;.&lt;secret&gt;" autocomplete="off">
           <label>Pathway</label><select id="t-cap">${opts}</select>
           <div id="t-operation-fields" style="display:contents">
-            <label data-test-for="chat image_generation">Prompt</label>
-            <textarea id="t-prompt" data-test-for="chat image_generation" style="height:100px">Say hello in one short sentence.</textarea>
+            <label data-test-for="chat image_generation multimodal_chat">Prompt</label>
+            <textarea id="t-prompt" data-test-for="chat image_generation multimodal_chat" style="height:100px">Say hello in one short sentence.</textarea>
             <label data-test-for="embeddings moderations">Input</label>
             <textarea id="t-input" data-test-for="embeddings moderations" style="height:100px">A short test input.</textarea>
             <label data-test-for="rerank">Query</label><input id="t-query" data-test-for="rerank" value="What is Membrane?">
@@ -1822,6 +1822,8 @@ InferencePath provides AI infrastructure.</textarea>
             <label data-test-for="audio_speech">Voice</label><input id="t-voice" data-test-for="audio_speech" value="alloy">
             <label data-test-for="audio_speech">Format</label><select id="t-format" data-test-for="audio_speech"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option></select>
             <label data-test-for="image_generation">Size</label><input id="t-size" data-test-for="image_generation" value="1024x1024">
+            <label data-test-for="multimodal_chat">Image</label><input id="t-image" data-test-for="multimodal_chat" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+            <label data-test-for="multimodal_chat">Audio</label><input id="t-multimodal-audio" data-test-for="multimodal_chat" type="file" accept="audio/wav,audio/mpeg">
             <label>Options</label><div>
               <label style="margin-right:16px"><input type="checkbox" id="t-reveal"> Reveal (provider family + model)</label>
               <label data-test-for="chat responses"><input type="checkbox" id="t-stream"> Stream</label></div>
@@ -1845,6 +1847,15 @@ InferencePath provides AI infrastructure.</textarea>
       });
       const stream = document.getElementById('t-stream');
       if (stream) stream.checked = false;
+    }
+
+    function testDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('could not read ' + file.name));
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
     }
 
     async function runTest() {
@@ -1877,6 +1888,18 @@ InferencePath provides AI infrastructure.</textarea>
           else if (operation === 'responses') request = { pathway, input: document.getElementById('t-response-input').value, instructions: document.getElementById('t-instructions').value.trim() || undefined, reveal, stream };
           else if (operation === 'image_generation') request = { pathway, prompt: document.getElementById('t-prompt').value, size: document.getElementById('t-size').value.trim() || undefined, reveal };
           else if (operation === 'audio_speech') request = { pathway, input: document.getElementById('t-speech-input').value, voice: document.getElementById('t-voice').value.trim(), format: document.getElementById('t-format').value, reveal };
+          else if (operation === 'multimodal_chat') {
+            const parts = [{ type: 'text', text: document.getElementById('t-prompt').value }];
+            const image = document.getElementById('t-image').files[0];
+            const audio = document.getElementById('t-multimodal-audio').files[0];
+            if (image) parts.push({ type: 'image_url', image_url: { url: await testDataURL(image) } });
+            if (audio) {
+              const dataURL = await testDataURL(audio);
+              const comma = dataURL.indexOf(',');
+              parts.push({ type: 'input_audio', input_audio: { data: dataURL.slice(comma + 1), format: audio.type === 'audio/wav' ? 'wav' : 'mp3' } });
+            }
+            request = { pathway, messages: [{ role: 'user', content: parts }], reveal };
+          }
           else request = { pathway, input: document.getElementById('t-input').value, reveal };
           body = JSON.stringify(request);
         }

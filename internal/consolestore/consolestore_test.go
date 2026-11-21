@@ -22,8 +22,8 @@ const demoHash = "458d6534a760ed4c8c2f1c8f86a517572cb56fa6a0f8554efdda2cb8532a48
 func TestOperationsCatalog(t *testing.T) {
 	a := consolestore.New(newSeeded(t), testCfg(), recordReload(consolestore.ReloadOutcome{Applied: true}, new(int)))
 	view := a.Operations()
-	if len(view.Operations) != 8 {
-		t.Fatalf("operations = %d, want 8 (closed enum)", len(view.Operations))
+	if len(view.Operations) != 9 {
+		t.Fatalf("operations = %d, want 9 (closed enum)", len(view.Operations))
 	}
 	byName := map[string]console.OperationView{}
 	for _, op := range view.Operations {
@@ -42,6 +42,10 @@ func TestOperationsCatalog(t *testing.T) {
 	emb, ok := byName["embeddings"]
 	if !ok || !emb.Restricted || emb.Route != "/v1/embeddings" {
 		t.Errorf("embeddings view wrong: %+v", emb)
+	}
+	multimodal, ok := byName["multimodal_chat"]
+	if !ok || !multimodal.Restricted || multimodal.Route != "/v1/multimodal/chat" {
+		t.Errorf("multimodal view wrong: %+v", multimodal)
 	}
 	if len(emb.OutboundAllow) == 0 || len(emb.InboundFields) == 0 {
 		t.Errorf("embeddings must carry a field palette: %+v", emb)

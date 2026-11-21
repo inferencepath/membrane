@@ -30,16 +30,16 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationResponses, types.OperationImageGeneration,
 		types.OperationAudioTranscription, types.OperationAudioSpeech,
-		types.OperationModerations,
+		types.OperationModerations, types.OperationMultimodalChat,
 	),
 	config.ProviderLocal: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
 		types.OperationResponses, types.OperationImageGeneration,
 		types.OperationAudioTranscription, types.OperationAudioSpeech,
-		types.OperationModerations,
+		types.OperationModerations, types.OperationMultimodalChat,
 	),
 	config.ProviderAnthropic: opSet(
-		types.OperationChat, types.OperationResponses,
+		types.OperationChat, types.OperationResponses, types.OperationMultimodalChat,
 	),
 	config.ProviderAzureOpenAI: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationResponses,
@@ -48,11 +48,11 @@ var familyOperations = map[types.ProviderID]map[types.Operation]struct{}{
 	),
 	config.ProviderBedrock: opSet(
 		types.OperationChat, types.OperationEmbeddings, types.OperationRerank,
-		types.OperationImageGeneration,
+		types.OperationImageGeneration, types.OperationMultimodalChat,
 	),
 	// Gemini embeddings use embedContent.
 	config.ProviderGemini: opSet(
-		types.OperationChat, types.OperationEmbeddings,
+		types.OperationChat, types.OperationEmbeddings, types.OperationMultimodalChat,
 	),
 }
 
@@ -106,6 +106,9 @@ func AdapterSupports(adapter providers.Provider, op types.Operation) bool {
 		return ok
 	case types.OperationModerations:
 		_, ok := adapter.(providers.ModerationsProvider)
+		return ok
+	case types.OperationMultimodalChat:
+		_, ok := adapter.(providers.MultimodalProvider)
 		return ok
 	default:
 		return false
