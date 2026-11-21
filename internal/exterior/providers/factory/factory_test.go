@@ -37,16 +37,7 @@ func TestBuildFamilies(t *testing.T) {
 // TestAdapterSupports checks that AdapterSupports agrees with FamilySupports for
 // every family and operation.
 func TestAdapterSupports(t *testing.T) {
-	allOps := []types.Operation{
-		types.OperationChat,
-		types.OperationEmbeddings,
-		types.OperationRerank,
-		types.OperationResponses,
-		types.OperationImageGeneration,
-		types.OperationAudioTranscription,
-		types.OperationAudioSpeech,
-		types.OperationModerations,
-	}
+	allOps := types.AllOperations()
 	families := []struct {
 		name   string
 		family types.ProviderID

@@ -136,7 +136,7 @@ sign: ## Sign the image + SBOM with cosign IF COSIGN_KEY is set (never fabricate
 
 .PHONY: smoke
 smoke: build ## Build + start the binary against the sample config and probe it.
-	./scripts/smoke.sh
+	EXPECT_VERSION=$(VERSION) ./scripts/smoke.sh
 
 .PHONY: release
 release: check sbom image sign ## Full release gate: quality + SBOM + image + (optional) signing.

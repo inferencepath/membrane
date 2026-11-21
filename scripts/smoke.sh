@@ -10,6 +10,7 @@ BIN="${BIN:-$ROOT/bin/membrane}"
 SEED="${SEED:-$ROOT/config/seed.example.yaml}"
 ADDR="${ADDR:-127.0.0.1:8080}"
 BASE="http://${ADDR}"
+EXPECT_VERSION="${EXPECT_VERSION:-}"
 
 if [[ ! -x "$BIN" ]]; then
   echo "smoke: building $BIN"
@@ -60,6 +61,11 @@ trap cleanup EXIT
 # Wait for /healthz to come up.
 ready=""
 for _ in $(seq 1 50); do
+  if ! kill -0 "$PID" 2>/dev/null; then
+    echo "smoke: FAIL: Membrane exited before /healthz became available"
+    cat /tmp/ip-smoke.log
+    exit 1
+  fi
   if curl -fsS "${BASE}/healthz" >/dev/null 2>&1; then ready=1; break; fi
   sleep 0.2
 done
@@ -71,6 +77,11 @@ echo "smoke: /healthz OK"
 # Readiness: the seeded store must yield a ready daemon.
 ready=""
 for _ in $(seq 1 50); do
+  if ! kill -0 "$PID" 2>/dev/null; then
+    echo "smoke: FAIL: Membrane exited before /readyz became available"
+    cat /tmp/ip-smoke.log
+    exit 1
+  fi
   if curl -fsS "${BASE}/readyz" >/dev/null 2>&1; then ready=1; break; fi
   sleep 0.2
 done
@@ -80,5 +91,9 @@ fi
 echo "smoke: /readyz OK"
 
 version="$(curl -fsS "${BASE}/version")" && echo "smoke: /version -> ${version}"
+if [[ -n "$EXPECT_VERSION" && "$version" != *"\"version\":\"${EXPECT_VERSION}\""* ]]; then
+  echo "smoke: FAIL: /version did not report ${EXPECT_VERSION}"
+  exit 1
+fi
 
 echo "smoke: PASS"

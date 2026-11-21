@@ -131,11 +131,20 @@ func TestCoreDependencyAllowlist(t *testing.T) {
 // into the standalone Community build.
 func TestCommunityCoreDoesNotImportEnterprise(t *testing.T) {
 	root := repoRoot(t)
+	forbiddenFragments := []string{
+		"/enterprise/",
+		"/immunity",
+		"/labreport",
+		"/presidio",
+		"redis/go-redis",
+	}
 	for _, rel := range []string{"cmd", "internal"} {
 		for dir, imps := range importsOfTree(t, root, rel) {
 			for _, imp := range imps {
-				if strings.HasPrefix(imp, module+"/enterprise") {
-					t.Errorf("%s imports Enterprise package %s", dir, imp)
+				for _, fragment := range forbiddenFragments {
+					if strings.Contains(imp, fragment) {
+						t.Errorf("%s imports forbidden Community dependency %s", dir, imp)
+					}
 				}
 			}
 		}
