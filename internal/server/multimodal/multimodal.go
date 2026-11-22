@@ -111,8 +111,8 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithContentStage installs the content barrier (Enterprise Immunity) applied to
-// every text part on ingress and to the reply text and transcript on egress.
+// WithContentStage installs an optional content stage applied to every text
+// part on ingress and to the reply text and transcript on egress.
 // When unset, a no-op stage is used.
 func WithContentStage(stage pipeline.ContentStage) HandlerOption {
 	return func(h *Handler) {
@@ -122,8 +122,8 @@ func WithContentStage(stage pipeline.ContentStage) HandlerOption {
 	}
 }
 
-// WithObservationStage installs the optional observability stage (Enterprise
-// LabReport). Its trace carries text and media descriptors, never media bytes.
+// WithObservationStage installs the optional observability stage. Its trace
+// carries text and media descriptors, never media bytes.
 // It is best-effort and never affects the response. When unset, a no-op stage
 // is used.
 func WithObservationStage(obs pipeline.ObservationStage) HandlerOption {
@@ -749,7 +749,7 @@ func (h *Handler) egress(ctx context.Context, reqID string, res *types.Canonical
 	return nil
 }
 
-// traceTurns is the Provider-facing request for the Safe Trace: each turn's
+// traceTurns is the Provider-facing request for the observation trace: each turn's
 // (sanitized) text parts in order, with every image or audio part replaced by
 // a content-free descriptor.
 func traceTurns(msgs []types.MultimodalMessage) []types.Message {
@@ -776,7 +776,7 @@ func traceTurns(msgs []types.MultimodalMessage) []types.Message {
 	return out
 }
 
-// traceReply is the (sanitized, pre-restoration) reply for the Safe Trace: the
+// traceReply is the (sanitized, pre-restoration) reply for the observation trace: the
 // text, and for a spoken reply a descriptor of the audio and its transcript.
 // When the request carried media, the model saw content the barrier could not
 // read and may repeat it, so the reply text and transcript are recorded only

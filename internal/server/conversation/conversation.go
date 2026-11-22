@@ -88,11 +88,11 @@ func WithAudit(sink audit.Sink) HandlerOption {
 	}
 }
 
-// WithContentStage installs the content barrier (Enterprise Immunity). The
-// instructions are passed to it on Ingress and the reply transcript is
-// restored on Egress. The audio crosses the Membrane unsanitized and nothing
-// can be restored inside the spoken reply, so Immunity allows only redact
-// here. When unset, a no-op stage is used.
+// WithContentStage installs an optional content stage. The instructions are
+// passed to it on Ingress and the reply transcript is restored on Egress. The
+// audio crosses the Membrane unsanitized and nothing can be restored inside
+// the spoken reply, so a content stage may only redact here. When unset, a
+// no-op stage is used.
 func WithContentStage(stage pipeline.ContentStage) HandlerOption {
 	return func(h *Handler) {
 		if stage != nil {
@@ -110,9 +110,9 @@ func WithMaxUploadBytes(n int64) HandlerOption {
 	}
 }
 
-// WithObservationStage installs the optional observability stage (Enterprise
-// LabReport). Its trace never carries audio bytes or transcripts: audio is
-// recorded as a descriptor. When unset, a no-op stage is used.
+// WithObservationStage installs the optional observability stage. Its trace
+// never carries audio bytes or transcripts: audio is recorded as a descriptor.
+// When unset, a no-op stage is used.
 func WithObservationStage(obs pipeline.ObservationStage) HandlerOption {
 	return func(h *Handler) {
 		if obs != nil {
