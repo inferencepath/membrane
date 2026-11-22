@@ -9,7 +9,7 @@ The error-model and observability contracts are versioned independently (both at
 
 ## [Unreleased]
 
-## [1.0.2] — 2026-11-21
+## [1.0.2] - 2026-11-22
 
 ### Added
 
@@ -25,6 +25,8 @@ The error-model and observability contracts are versioned independently (both at
   OpenAI-compatible endpoint.
 - The Console offers the GCP auth modes for the `anthropic` and `local`
   families.
+
+## [0.5.0] - 2026-10-30
 
 ### Changed
 
@@ -161,5 +163,7 @@ proven on every live path.
   accepts nothing else.
 - Audit and metrics are identity-free by construction and verified by tests.
 
-[Unreleased]: https://github.com/inferencepath/membrane/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/inferencepath/membrane/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/inferencepath/membrane/compare/v0.5.0...v1.0.2
+[0.5.0]: https://github.com/inferencepath/membrane/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/inferencepath/membrane/releases/tag/v0.4.0
